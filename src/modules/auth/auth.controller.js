@@ -14,8 +14,9 @@ export const login = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { username },
       include: {
-        leader: true,      // Incluye el líder al que pertenece
-        
+        leader: true, // Incluye el líder al que pertenece
+        role: true // Incluimos toda la relación Role
+
       }
     })
 
@@ -35,9 +36,13 @@ export const login = async (req, res) => {
     // Eliminar password del objeto antes de enviar
     const { password: _, ...userData } = user
 
+    // Enviar user con role garantizado
     res.json({
       token,
-      user: userData
+      user: {
+        ...userData,
+        role: user.role // ✅ Aseguramos que siempre venga
+      }
     })
   } catch (error) {
     res.status(500).json({ error: error.message })

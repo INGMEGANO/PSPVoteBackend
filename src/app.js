@@ -17,6 +17,7 @@ import analyticsRoutes from "./modules/analytics/analytics.routes.js";
 
 
 
+
 const app = express()
 
 app.use(cors())
