@@ -6,19 +6,20 @@ import prisma from "../../prisma.js"
 export const createLeader = async (req, res) => {
   try {
     console.log("HEADERS:", req.headers)
-console.log("BODY:", req.body)
+    console.log("BODY:", req.body)
 
     if (!req.body) {
-    return res.status(400).json({
-      error: "Body vacío o no enviado. Usa Content-Type: application/json"
-    })
-  }
-    const { name, phone, address, recommendedById } = req.body || {}
+      return res.status(400).json({
+        error: "Body vacío o no enviado. Usa Content-Type: application/json"
+      })
+    }
+
+    const { userId, name, phone, address, recommendedById } = req.body || {}
 
     if (!name) {
-    return res.status(400).json({
+      return res.status(400).json({
         error: "El campo 'name' es obligatorio"
-    })
+      })
     }
 
     // Validar recomendador si viene
@@ -32,6 +33,7 @@ console.log("BODY:", req.body)
       }
     }
 
+    // Crear líder
     const leader = await prisma.leader.create({
       data: {
         name,
@@ -41,13 +43,21 @@ console.log("BODY:", req.body)
       }
     })
 
-    
+    // Asociar usuario al líder si se envió userId
+    let user = null
+    if (userId) {
+      user = await prisma.user.update({
+        where: { id: userId },
+        data: { leaderId: leader.id }
+      })
+    }
 
-    res.status(201).json(leader)
+    res.status(201).json({ leader, user })
   } catch (error) {
     res.status(400).json({ error: error.message })
   }
 }
+
 
 // ========================
 // LISTAR LÍDERES

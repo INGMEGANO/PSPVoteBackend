@@ -1,28 +1,45 @@
-import bcrypt from "bcrypt"
-import jwt from "jsonwebtoken"
 import prisma from "../../prisma.js"
+import jwt from "jsonwebtoken"
+import bcrypt from "bcrypt"
 
 export const login = async (req, res) => {
-  const { username, password } = req.body
+  try {
+    const { username, password } = req.body
 
-  const user = await prisma.user.findUnique({
-    where: { username },
-    include: { role: true }
-  })
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username y password son obligatorios" })
+    }
 
-  if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.status(401).json({ error: "Credenciales inválidas" })
+    // Buscar usuario por username
+    const user = await prisma.user.findUnique({
+      where: { username },
+      include: {
+        leader: true,      // Incluye el líder al que pertenece
+        
+      }
+    })
+
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" })
+
+    // Verificar password
+    const validPassword = await bcrypt.compare(password, user.password)
+    if (!validPassword) return res.status(401).json({ error: "Password incorrecto" })
+
+    // Generar token
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "8h" }
+    )
+
+    // Eliminar password del objeto antes de enviar
+    const { password: _, ...userData } = user
+
+    res.json({
+      token,
+      user: userData
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
   }
-
-  const token = jwt.sign(
-    {
-      userId: user.id,
-      role: user.role.name,
-      leaderId: user.leaderId
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "8h" }
-  )
-
-  res.json({ token })
 }
