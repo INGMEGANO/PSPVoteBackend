@@ -8,6 +8,8 @@ import usersRoutes from "./modules/users/users.routes.js"
 import leaderRoutes from "./modules/leaders/leaders.routes.js"
 
 
+import puestoVotacionRoutes from './modules/puestodevotacion/puestodevotacion.routes.js';
+
 
 import votacionesRoutes from "./modules/votaciones/votaciones.routes.js"
 
@@ -24,6 +26,7 @@ app.use("/api/users", usersRoutes)
 app.use("/api/leaders", leaderRoutes)
 
 
+app.use('/api/puestos-votacion', puestoVotacionRoutes);
 
 
 app.use("/api/votaciones", votacionesRoutes)
