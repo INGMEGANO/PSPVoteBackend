@@ -5,6 +5,9 @@ import authRoutes from "./modules/auth/auth.routes.js"
 
 import usersRoutes from "./modules/users/users.routes.js"
 
+import leaderRoutes from "./modules/leaders/leaders.routes.js"
+
+
 
 import votacionesRoutes from "./modules/votaciones/votaciones.routes.js"
 
@@ -17,6 +20,10 @@ app.use(express.json())
 app.use("/api/auth", authRoutes)
 
 app.use("/api/users", usersRoutes)
+
+app.use("/api/leaders", leaderRoutes)
+
+
 
 
 app.use("/api/votaciones", votacionesRoutes)
