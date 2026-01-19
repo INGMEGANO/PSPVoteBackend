@@ -1,0 +1,65 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.0.x"]
+}
+
+
+datasource db {
+  provider = "mysql"
+  url      = env("MASTER_DATABASE_URL")
+}
+
+model Role {
+  id    String @id @default(uuid())
+  name  String @unique
+  users User[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  leaderId  String?
+  leader    Leader?  @relation(fields: [leaderId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Leader {
+  id          String      @id @default(uuid())
+  nombre      String
+  direccion   String
+  telefono    String
+  recomendado String?
+  users       User[]
+  votaciones  Votacion[]
+}
+
+model Votacion {
+  id              String   @id @default(uuid())
+  nombre1         String
+  nombre2         String?
+  apellido1       String
+  apellido2       String?
+  cedula          String   @unique
+  telefono        String
+  direccion       String
+  barrio          String
+  puestoVotacion  String
+  leaderId        String
+  leader          Leader   @relation(fields: [leaderId], references: [id])
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Audit {
+  id         String   @id @default(uuid())
+  tableName  String
+  recordId   String
+  oldValues  Json
+  newValues  Json
+  modifiedBy String
+  modifiedAt DateTime @default(now())
+}

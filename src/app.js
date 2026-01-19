@@ -1,0 +1,29 @@
+import express from "express"
+import cors from "cors"
+
+import authRoutes from "./modules/auth/auth.routes.js"
+
+import usersRoutes from "./modules/users/users.routes.js"
+
+
+import votacionesRoutes from "./modules/votaciones/votaciones.routes.js"
+
+
+const app = express()
+
+app.use(cors())
+app.use(express.json())
+
+app.use("/api/auth", authRoutes)
+
+app.use("/api/users", usersRoutes)
+
+
+app.use("/api/votaciones", votacionesRoutes)
+
+
+app.get("/", (req, res) => {
+  res.json({ message: "API Votaciones funcionando" })
+})
+
+export default app
