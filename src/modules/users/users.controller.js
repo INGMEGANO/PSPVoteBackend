@@ -5,6 +5,14 @@ export const createUser = async (req, res) => {
   try {
     const { username, password, roleId, leaderId } = req.body
 
+    const role = await prisma.role.findUnique({
+      where: { id: roleId }
+    })
+
+    if (!role) {
+      return res.status(400).json({ error: "Rol no existe" })
+    }
+
     const hash = await bcrypt.hash(password, 10)
 
     const user = await prisma.user.create({

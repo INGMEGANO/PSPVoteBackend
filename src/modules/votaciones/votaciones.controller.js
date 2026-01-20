@@ -5,17 +5,37 @@ import prisma from "../../prisma.js"
  */
 export const createVotacion = async (req, res) => {
   try {
-    const leaderId = req.user.leaderId
+    const { role, leaderId } = req.user
 
-    if (!leaderId && req.user.role !== "ADMIN") {
-      return res.status(403).json({ error: "No tiene líder asignado" })
+    // 🔐 Solo líderes pueden crear votaciones
+    if (role === "LIDER" && !leaderId) {
+      return res.status(403).json({
+        error: "El usuario líder no tiene un líder asociado"
+      })
     }
+
+    // 👑 ADMIN puede crear SOLO si indica líder
+    if (role === "ADMIN" && !leaderId && !req.body.leaderId) {
+      return res.status(400).json({
+        error: "Admin debe indicar leaderId"
+      })
+    }
+
+    const finalLeaderId =
+      role === "ADMIN" ? req.body.leaderId : leaderId
 
     const votacion = await prisma.votacion.create({
       data: {
-        ...req.body,
-        leaderId: leaderId ?? req.body.leaderId,
-        createdBy: req.user.userId
+        nombre1: req.body.nombre1,
+        nombre2: req.body.nombre2,
+        apellido1: req.body.apellido1,
+        apellido2: req.body.apellido2,
+        cedula: req.body.cedula,
+        telefono: req.body.telefono,
+        direccion: req.body.direccion,
+        barrio: req.body.barrio,
+        puestoVotacion: req.body.puestoVotacion,
+        leaderId: finalLeaderId
       }
     })
 
@@ -24,6 +44,7 @@ export const createVotacion = async (req, res) => {
     res.status(400).json({ error: error.message })
   }
 }
+
 
 export const getVotaciones = async (req, res) => {
   try {
