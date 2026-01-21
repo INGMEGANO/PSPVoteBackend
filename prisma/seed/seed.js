@@ -36,7 +36,7 @@ async function main() {
 
   await prisma.user.upsert({
     where: { username: "admin" },
-    update: {}, // no actualizar si ya existe
+    update: {},
     create: {
       username: "admin",
       password: adminPassword,
@@ -71,7 +71,71 @@ async function main() {
   }
 
   console.log("✅ Usuarios de prueba creados o ya existentes")
-  console.log("🌱 Seed finalizado")
+
+  // ============================
+// PROGRAMAS
+// ============================
+const programas = [
+  { nombre: "COMPROMISOS", tieneSedes: false },
+  { nombre: "SALUD", tieneSedes: true },
+  { nombre: "EDUCACIÓN", tieneSedes: true }
+]
+
+for (const p of programas) {
+  await prisma.programa.upsert({
+    where: { nombre: p.nombre },
+    update: { tieneSedes: p.tieneSedes },
+    create: p
+  })
+}
+
+console.log("✅ Programas creados")
+
+// ============================
+// TIPOS DE VINCULACIÓN
+// ============================
+const tipos = ["P/P", "CORAZÓN"]
+
+for (const nombre of tipos) {
+  await prisma.tipoVinculacion.upsert({
+    where: { nombre },
+    update: {},
+    create: { nombre }
+  })
+}
+
+console.log("✅ Tipos de vinculación creados")
+
+// ============================
+// SEDES
+// ============================
+const salud = await prisma.programa.findUnique({
+  where: { nombre: "SALUD" }
+})
+
+if (salud) {
+  const sedesSalud = ["NORTE", "SUR", "CENTRO"]
+
+  for (const nombre of sedesSalud) {
+    await prisma.sedePrograma.upsert({
+      where: {
+        nombre_programaId: {
+          nombre,
+          programaId: salud.id
+        }
+      },
+      update: {},
+      create: {
+        nombre,
+        programaId: salud.id
+      }
+    })
+  }
+}
+
+console.log("✅ Sedes creadas")
+
+  console.log("🌱 Seed finalizado correctamente")
 }
 
 main()

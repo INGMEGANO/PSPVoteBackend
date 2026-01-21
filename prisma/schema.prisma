@@ -89,11 +89,22 @@ model Votacion {
   recommendedBy   Leader? @relation("RecommendedVotaciones", fields: [recommendedById], references: [id])
 
   // 🔥 CONTROL REAL
-  isActive        Boolean  @default(true)
-  isDuplicate     Boolean  @default(false)
-  duplicatedFrom  String?
-  duplicateOf     Votacion? @relation("VotacionDuplicates", fields: [duplicatedFrom], references: [id])
-  duplicates      Votacion[] @relation("VotacionDuplicates")
+  isActive       Boolean    @default(true)
+  isDuplicate    Boolean    @default(false)
+  duplicatedFrom String?
+  duplicateOf    Votacion?  @relation("VotacionDuplicates", fields: [duplicatedFrom], references: [id])
+  duplicates     Votacion[] @relation("VotacionDuplicates")
+
+  programaId String?
+  programa   Programa? @relation(fields: [programaId], references: [id])
+
+  sedeId String?
+  sede   SedePrograma? @relation(fields: [sedeId], references: [id])
+
+  tipoId String?
+  tipo   TipoVinculacion? @relation(fields: [tipoId], references: [id])
+
+  esPago Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -117,4 +128,32 @@ model PuestoVotacion {
   longitud     Decimal  @db.Decimal(10, 7)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model Programa {
+  id         String  @id @default(uuid())
+  nombre     String  @unique
+  tieneSedes Boolean @default(false)
+
+  votaciones   Votacion[]
+  SedePrograma SedePrograma[]
+}
+
+model SedePrograma {
+  id     String @id @default(uuid())
+  nombre String
+
+  programaId String
+  programa   Programa @relation(fields: [programaId], references: [id])
+
+  votaciones Votacion[]
+
+  @@unique([nombre, programaId])
+}
+
+model TipoVinculacion {
+  id     String @id @default(uuid())
+  nombre String @unique
+
+  votaciones Votacion[]
 }
