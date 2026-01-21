@@ -1,17 +1,18 @@
-import { Router } from "express"
-import { authMiddleware } from "../../middlewares/auth.middleware.js"
-import { allowRoles } from "../../middlewares/role.middleware.js"
+import express from "express"
 import {
   createUser,
-  getUsers
+  getUsers,
+  getUserById,
+  updateUser,
+  toggleUserStatus
 } from "./users.controller.js"
 
-const router = Router()
+const router = express.Router()
 
-router.use(authMiddleware)
-
-// SOLO ADMIN
-router.post("/", allowRoles("ADMIN"), createUser)
-router.get("/", allowRoles("ADMIN"), getUsers)
+router.post("/", createUser) // Crear usuario
+router.get("/", getUsers) // Listar todos los usuarios
+router.get("/:id", getUserById) // Obtener usuario por ID
+router.put("/:id", updateUser) // Actualizar usuario
+router.patch("/:id/toggle-status", toggleUserStatus) // Activar/desactivar
 
 export default router

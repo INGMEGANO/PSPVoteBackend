@@ -12,6 +12,8 @@ datasource db {
 model Role {
   id    String @id @default(uuid())
   name  String @unique
+  isActive Boolean @default(true)
+  
   users User[]
 }
 
@@ -25,6 +27,8 @@ model User {
 
   leaderId  String?
   leader    Leader?  @relation(fields: [leaderId], references: [id])
+
+  isActive  Boolean  @default(true)
 
   createdAt DateTime @default(now())
 }
