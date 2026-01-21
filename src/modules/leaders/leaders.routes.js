@@ -4,20 +4,17 @@ import {
   getLeaders,
   getLeaderById,
   updateLeader,
-  deleteLeader
+  toggleLeaderStatus,
+  assignUserToLeader
 } from "./leaders.controller.js"
-import { assignUserToLeader } from "./leaders.controller.js"; // ✅ Importamos la función
-
 
 const router = express.Router()
 
-router.post("/", createLeader)
-router.get("/", getLeaders)
-router.get("/:id", getLeaderById)
-router.put("/:id", updateLeader)
-router.delete("/:id", deleteLeader)
-
-router.post("/assign-user", assignUserToLeader); // ✅ Aquí se monta correctamente
-
+router.post("/", createLeader)                   // Crear líder
+router.get("/", getLeaders)                      // Listar líderes
+router.get("/:id", getLeaderById)               // Obtener líder por ID
+router.put("/:id", updateLeader)                // Actualizar líder
+router.patch("/:id/toggle-status", toggleLeaderStatus) // Activar/desactivar
+router.post("/assign-user", assignUserToLeader) // Asignar usuario a líder
 
 export default router

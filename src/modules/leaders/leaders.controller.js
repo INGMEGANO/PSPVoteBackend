@@ -1,13 +1,10 @@
 import prisma from "../../prisma.js"
 
 // ========================
-// CREAR LÍDER
+// CREAR LÍDER (y asociar usuario opcional)
 // ========================
 export const createLeader = async (req, res) => {
   try {
-    console.log("HEADERS:", req.headers)
-    console.log("BODY:", req.body)
-
     if (!req.body) {
       return res.status(400).json({
         error: "Body vacío o no enviado. Usa Content-Type: application/json"
@@ -17,29 +14,23 @@ export const createLeader = async (req, res) => {
     const { userId, name, phone, address, recommendedById } = req.body || {}
 
     if (!name) {
-      return res.status(400).json({
-        error: "El campo 'name' es obligatorio"
-      })
+      return res.status(400).json({ error: "El campo 'name' es obligatorio" })
     }
 
     // Validar recomendador si viene
     if (recommendedById) {
-      const exists = await prisma.leader.findUnique({
-        where: { id: recommendedById }
-      })
-
-      if (!exists) {
-        return res.status(400).json({ error: "El líder recomendador no existe" })
-      }
+      const exists = await prisma.leader.findUnique({ where: { id: recommendedById } })
+      if (!exists) return res.status(400).json({ error: "El líder recomendador no existe" })
     }
 
-    // Crear líder
+    // Crear líder con isActive: true
     const leader = await prisma.leader.create({
       data: {
         name,
         phone,
         address,
-        recommendedById: recommendedById || null
+        recommendedById: recommendedById || null,
+        isActive: true
       }
     })
 
@@ -58,16 +49,13 @@ export const createLeader = async (req, res) => {
   }
 }
 
-
 // ========================
 // LISTAR LÍDERES
 // ========================
 export const getLeaders = async (req, res) => {
   const leaders = await prisma.leader.findMany({
-    include: {
-      recommendedBy: true,
-      recommendations: true
-    }
+    include: { recommendedBy: true, recommendations: true, users: true },
+    orderBy: { createdAt: "desc" }
   })
   res.json(leaders)
 }
@@ -78,16 +66,10 @@ export const getLeaders = async (req, res) => {
 export const getLeaderById = async (req, res) => {
   const leader = await prisma.leader.findUnique({
     where: { id: req.params.id },
-    include: {
-      recommendedBy: true,
-      recommendations: true,
-      votaciones: true
-    }
+    include: { recommendedBy: true, recommendations: true, users: true, votaciones: true }
   })
 
-  if (!leader) {
-    return res.status(404).json({ error: "Líder no encontrado" })
-  }
+  if (!leader) return res.status(404).json({ error: "Líder no encontrado" })
 
   res.json(leader)
 }
@@ -100,23 +82,13 @@ export const updateLeader = async (req, res) => {
     const { name, phone, address, recommendedById } = req.body
 
     if (recommendedById) {
-      const exists = await prisma.leader.findUnique({
-        where: { id: recommendedById }
-      })
-
-      if (!exists) {
-        return res.status(400).json({ error: "El líder recomendador no existe" })
-      }
+      const exists = await prisma.leader.findUnique({ where: { id: recommendedById } })
+      if (!exists) return res.status(400).json({ error: "El líder recomendador no existe" })
     }
 
     const leader = await prisma.leader.update({
       where: { id: req.params.id },
-      data: {
-        name,
-        phone,
-        address,
-        recommendedById: recommendedById || null
-      }
+      data: { name, phone, address, recommendedById: recommendedById || null }
     })
 
     res.json(leader)
@@ -126,36 +98,40 @@ export const updateLeader = async (req, res) => {
 }
 
 // ========================
-// ELIMINAR LÍDER
+// ACTIVAR / DESACTIVAR LÍDER
 // ========================
-export const deleteLeader = async (req, res) => {
+export const toggleLeaderStatus = async (req, res) => {
+  const { id } = req.params
+
   try {
-    await prisma.leader.delete({
-      where: { id: req.params.id }
+    const leader = await prisma.leader.findUnique({ where: { id } })
+    if (!leader) return res.status(404).json({ error: "Líder no encontrado" })
+
+    const updatedLeader = await prisma.leader.update({
+      where: { id },
+      data: { isActive: !leader.isActive }
     })
-    res.json({ message: "Líder eliminado correctamente" })
+
+    res.json({
+      message: `Líder ${updatedLeader.isActive ? "activado" : "desactivado"}`,
+      leader: updatedLeader
+    })
   } catch (error) {
-    res.status(400).json({ error: "No se puede eliminar el líder" })
+    res.status(400).json({ error: error.message })
   }
 }
 
-
+// ========================
+// ASIGNAR USUARIO A LÍDER
+// ========================
 export const assignUserToLeader = async (req, res) => {
-  const { userId, leaderId } = req.body;
+  const { userId, leaderId } = req.body
+  if (!userId || !leaderId) return res.status(400).json({ error: "userId y leaderId son obligatorios" })
 
-  if (!userId || !leaderId) {
-    return res.status(400).json({ error: "userId y leaderId son obligatorios" });
-  }
+  const leader = await prisma.leader.findUnique({ where: { id: leaderId } })
+  if (!leader) return res.status(404).json({ error: "Líder no encontrado" })
 
-  // Validar que el líder existe
-  const leader = await prisma.leader.findUnique({ where: { id: leaderId } });
-  if (!leader) return res.status(404).json({ error: "Líder no encontrado" });
+  const user = await prisma.user.update({ where: { id: userId }, data: { leaderId } })
 
-  // Actualizar el usuario
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: { leaderId }
-  });
-
-  res.json({ message: "Usuario asignado al líder correctamente", user });
-};
+  res.json({ message: "Usuario asignado al líder correctamente", user })
+}
