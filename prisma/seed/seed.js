@@ -76,9 +76,13 @@ async function main() {
 // PROGRAMAS
 // ============================
 const programas = [
+  { nombre: "P/P", tieneSedes: false },
   { nombre: "COMPROMISOS", tieneSedes: false },
-  { nombre: "SALUD", tieneSedes: true },
-  { nombre: "EDUCACIÓN", tieneSedes: true }
+  { nombre: "LIDERES", tieneSedes: false },
+  { nombre: "COLEGIOS", tieneSedes: true },
+  { nombre: "OTRO1", tieneSedes: false },
+  { nombre: "OTRO2", tieneSedes: false },
+  { nombre: "OTRO3", tieneSedes: false },
 ]
 
 for (const p of programas) {
@@ -110,11 +114,11 @@ console.log("✅ Tipos de vinculación creados")
 // SEDES
 // ============================
 const salud = await prisma.programa.findUnique({
-  where: { nombre: "SALUD" }
+  where: { nombre: "COLEGIOS" }
 })
 
 if (salud) {
-  const sedesSalud = ["NORTE", "SUR", "CENTRO"]
+  const sedesSalud = ["VILLADELA", "MANUELA", "7 BOCAS", 'ROBLES', 'GALAN', 'C BONITA']
 
   for (const nombre of sedesSalud) {
     await prisma.sedePrograma.upsert({
