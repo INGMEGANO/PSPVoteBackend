@@ -154,6 +154,7 @@ model SedePrograma {
 model TipoVinculacion {
   id     String @id @default(uuid())
   nombre String @unique
+  esPago Boolean @default(false)
 
   votaciones Votacion[]
 }

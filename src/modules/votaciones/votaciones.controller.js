@@ -45,6 +45,9 @@ export const createVotacion = async (req, res) => {
         puestoVotacion: req.body.puestoVotacion,
         leaderId: leaderIdFinal,
         recommendedById: req.body.recommendedById || null,
+        programaId: req.body.programaId || null,
+        sedeId: req.body.sedeId || null,
+        tipoId: req.body.tipoId || null,
 
         // 🧠 DUPLICADOS
         isDuplicate: !!existing,
