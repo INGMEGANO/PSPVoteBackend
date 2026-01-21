@@ -3,58 +3,58 @@ generator client {
   binaryTargets = ["native", "debian-openssl-1.0.x"]
 }
 
-
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 model Role {
-  id    String @id @default(uuid())
-  name  String @unique
+  id       String  @id @default(uuid())
+  name     String  @unique
   isActive Boolean @default(true)
-  
+
   users User[]
 }
 
 model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String
+  id       String @id @default(uuid())
+  username String @unique
+  password String
 
-  roleId    String
-  role      Role     @relation(fields: [roleId], references: [id])
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id])
 
-  leaderId  String?
-  leader    Leader?  @relation(fields: [leaderId], references: [id])
+  leaderId String?
+  leader   Leader? @relation(fields: [leaderId], references: [id])
 
-  isActive  Boolean  @default(true)
+  isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
 }
 
 model Leader {
-  id               String   @id @default(uuid())
-  name             String
-  phone            String?
-  address          String?
+  id      String  @id @default(uuid())
+  name    String
+  phone   String?
+  address String?
 
   // 🔁 Relación recursiva (líder recomendado por otro líder)
-  recommendedById  String?
-  recommendedBy    Leader?  @relation("LeaderRecommendations", fields: [recommendedById], references: [id])
-  recommendations  Leader[] @relation("LeaderRecommendations")
+  recommendedById String?
+  recommendedBy   Leader?  @relation("LeaderRecommendations", fields: [recommendedById], references: [id])
+  recommendations Leader[] @relation("LeaderRecommendations")
 
   // 🔗 Relaciones
-  users            User[]
-  votaciones       Votacion[]
+  users      User[]
+  votaciones Votacion[]
 
-  isActive         Boolean  @default(true)
+  // 🔹 Relación de votaciones donde este líder es recomendado
+  recommendedVotaciones Votacion[] @relation("RecommendedVotaciones")
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
-
-
 
 model Audit {
   id         String   @id @default(uuid())
@@ -67,42 +67,54 @@ model Audit {
 }
 
 model Votacion {
-  id              String   @id @default(uuid())
+  id String @id @default(uuid())
 
   // Datos del votante
-  nombre1         String
-  nombre2         String?
-  apellido1       String
-  apellido2       String?
-  cedula          String   @unique
-  telefono        String?
-  direccion       String?
-  barrio          String?
-  puestoVotacion  String?
+  nombre1        String
+  nombre2        String?
+  apellido1      String
+  apellido2      String?
+  cedula         String
+  telefono       String?
+  direccion      String?
+  barrio         String?
+  puestoVotacion String?
 
   // Relación con líder
-  leaderId        String
-  leader          Leader   @relation(fields: [leaderId], references: [id])
+  leaderId String
+  leader   Leader @relation(fields: [leaderId], references: [id])
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  // Líder recomendado para esta votación
+  recommendedById String?
+  recommendedBy   Leader? @relation("RecommendedVotaciones", fields: [recommendedById], references: [id])
+
+  // 🔥 CONTROL REAL
+  isActive        Boolean  @default(true)
+  isDuplicate     Boolean  @default(false)
+  duplicatedFrom  String?
+  duplicateOf     Votacion? @relation("VotacionDuplicates", fields: [duplicatedFrom], references: [id])
+  duplicates      Votacion[] @relation("VotacionDuplicates")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cedula, leaderId])
 }
 
-
 model PuestoVotacion {
-  id            String   @id @default(uuid())
-  codUnic       String   @unique
-  departamento  String
-  municipio     String
-  puesto        String
-  mujeres       Int
-  hombres       Int
-  total         Int
-  mesas         Int
-  comuna        String?
-  direccion     String
-  latitud       Decimal  @db.Decimal(10, 7)
-  longitud      Decimal  @db.Decimal(10, 7)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  codUnic      String   @unique
+  departamento String
+  municipio    String
+  puesto       String
+  mujeres      Int
+  hombres      Int
+  total        Int
+  mesas        Int
+  comuna       String?
+  direccion    String
+  latitud      Decimal  @db.Decimal(10, 7)
+  longitud     Decimal  @db.Decimal(10, 7)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

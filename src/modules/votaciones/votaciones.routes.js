@@ -6,26 +6,57 @@ import {
   getVotaciones,
   getVotacionById,
   updateVotacion,
-  deleteVotacion
+  deleteVotacion,
+  getDuplicatedVotaciones,
+  getVotacionDuplicates,
+  deactivateVotacion,
+  reassignVotacion
 } from "./votaciones.controller.js"
 
 const router = Router()
 
 router.use(authMiddleware)
 
-// Crear
+/* =======================
+   CREAR
+======================= */
 router.post(
   "/",
   allowRoles("ADMIN", "LIDER", "DIGITADOR"),
   createVotacion
 )
 
-// Listar
+/* =======================
+   LISTADOS ESPECIALES
+   ⚠️ SIEMPRE ANTES DE /:id
+======================= */
+
+// 🔁 Todas las duplicadas
+router.get(
+  "/duplicadas",
+  allowRoles("ADMIN", "LIDER"),
+  getDuplicatedVotaciones
+)
+
+// 🔎 Duplicados de una votación específica
+router.get(
+  "/:id/duplicados",
+  allowRoles("ADMIN", "LIDER"),
+  getVotacionDuplicates
+)
+
+/* =======================
+   LISTAR NORMAL
+======================= */
 router.get(
   "/",
   allowRoles("ADMIN", "LIDER"),
   getVotaciones
 )
+
+/* =======================
+   CRUD POR ID
+======================= */
 
 // Ver una
 router.get(
@@ -41,7 +72,21 @@ router.put(
   updateVotacion
 )
 
-// Eliminar
+// Desactivar (soft delete)
+router.patch(
+  "/:id/desactivar",
+  allowRoles("ADMIN", "LIDER"),
+  deactivateVotacion
+)
+
+// Reasignar a otro líder
+router.patch(
+  "/:id/reasignar",
+  allowRoles("ADMIN"),
+  reassignVotacion
+)
+
+// Eliminar físico (opcional)
 router.delete(
   "/:id",
   allowRoles("ADMIN"),

@@ -5,24 +5,32 @@ import prisma from "../../prisma.js"
  */
 export const createVotacion = async (req, res) => {
   try {
-    const { role, leaderId } = req.user
+    const { role, leaderId: tokenLeaderId, userId } = req.user;
+    let leaderIdFinal = tokenLeaderId;
 
-    // 🔐 Solo líderes pueden crear votaciones
-    if (role === "LIDER" && !leaderId) {
-      return res.status(403).json({
-        error: "El usuario líder no tiene un líder asociado"
-      })
+    if (role === "LIDER" && !leaderIdFinal) {
+      const userFromDb = await prisma.user.findUnique({
+        where: { id: userId }
+      });
+      leaderIdFinal = userFromDb.leaderId;
     }
 
-    // 👑 ADMIN puede crear SOLO si indica líder
-    if (role === "ADMIN" && !leaderId && !req.body.leaderId) {
-      return res.status(400).json({
-        error: "Admin debe indicar leaderId"
-      })
+    if (role === "LIDER" && !leaderIdFinal) {
+      return res.status(403).json({ error: "Líder sin asignación" });
     }
 
-    const finalLeaderId =
-      role === "ADMIN" ? req.body.leaderId : leaderId
+    if (role === "ADMIN" && !leaderIdFinal && !req.body.leaderId) {
+      return res.status(400).json({ error: "Admin debe indicar leaderId" });
+    }
+
+    leaderIdFinal = role === "ADMIN" ? req.body.leaderId : leaderIdFinal;
+
+    // 🔍 BUSCAR SI YA EXISTE ESA CÉDULA
+    const existing = await prisma.votacion.findFirst({
+      where: {
+        cedula: req.body.cedula
+      }
+    });
 
     const votacion = await prisma.votacion.create({
       data: {
@@ -35,15 +43,26 @@ export const createVotacion = async (req, res) => {
         direccion: req.body.direccion,
         barrio: req.body.barrio,
         puestoVotacion: req.body.puestoVotacion,
-        leaderId: finalLeaderId
-      }
-    })
+        leaderId: leaderIdFinal,
+        recommendedById: req.body.recommendedById || null,
 
-    res.status(201).json(votacion)
+        // 🧠 DUPLICADOS
+        isDuplicate: !!existing,
+        duplicatedFrom: existing ? existing.id : null
+      }
+    });
+
+    res.status(201).json({
+      votacion,
+      warning: existing
+        ? "Este votante ya fue registrado por otro líder"
+        : null
+    });
   } catch (error) {
-    res.status(400).json({ error: error.message })
+    res.status(400).json({ error: error.message });
   }
-}
+};
+
 
 
 export const getVotaciones = async (req, res) => {
@@ -85,23 +104,29 @@ export const getVotacionById = async (req, res) => {
 
 
 export const updateVotacion = async (req, res) => {
-  const { id } = req.params
+  const { id } = req.params;
 
-  const oldData = await prisma.votacion.findUnique({ where: { id } })
-  if (!oldData) return res.status(404).json({ error: "No encontrada" })
+  const oldData = await prisma.votacion.findUnique({ where: { id } });
+  if (!oldData) return res.status(404).json({ error: "No encontrada" });
 
-  if (
-    req.user.role !== "ADMIN" &&
-    oldData.leaderId !== req.user.leaderId
-  ) {
-    return res.status(403).json({ error: "No autorizado" })
+  // 🔹 Traer el leaderId real del usuario
+  const userFromDb = await prisma.user.findUnique({
+    where: { id: req.user.userId }
+  });
+  const userLeaderId = userFromDb.leaderId;
+
+  // 🔹 Validación de permisos
+  if (req.user.role !== "ADMIN" && oldData.leaderId !== userLeaderId) {
+    return res.status(403).json({ error: "No autorizado" });
   }
 
+  // 🔹 Actualizar votación
   const updated = await prisma.votacion.update({
     where: { id },
     data: req.body
-  })
+  });
 
+  // 🔹 Registrar auditoría
   await prisma.audit.create({
     data: {
       tableName: "votaciones",
@@ -110,10 +135,10 @@ export const updateVotacion = async (req, res) => {
       newValues: updated,
       modifiedBy: req.user.userId
     }
-  })
+  });
 
-  res.json(updated)
-}
+  res.json(updated);
+};
 
 export const deleteVotacion = async (req, res) => {
   const { id } = req.params
@@ -121,4 +146,105 @@ export const deleteVotacion = async (req, res) => {
   await prisma.votacion.delete({ where: { id } })
 
   res.json({ message: "Votación eliminada" })
+}
+
+export const getDuplicatedVotaciones = async (req, res) => {
+  try {
+    const where =
+      req.user.role === "ADMIN"
+        ? { isDuplicate: true }
+        : {
+            isDuplicate: true,
+            leaderId: req.user.leaderId
+          };
+
+    const data = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: true,
+        duplicateOf: true
+      }
+    });
+
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ⛔ Desactivar votación (soft delete)
+export const deactivateVotacion = async (req, res) => {
+  const { id } = req.params
+
+  const votacion = await prisma.votacion.findUnique({ where: { id } })
+  if (!votacion) {
+    return res.status(404).json({ error: "No encontrada" })
+  }
+
+  if (
+    req.user.role !== "ADMIN" &&
+    votacion.leaderId !== req.user.leaderId
+  ) {
+    return res.status(403).json({ error: "No autorizado" })
+  }
+
+  const updated = await prisma.votacion.update({
+    where: { id },
+    data: { isActive: false }
+  })
+
+  res.json(updated)
+}
+
+
+// 🔁 Reasignar votación a otro líder (solo ADMIN)
+export const reassignVotacion = async (req, res) => {
+  const { id } = req.params
+  const { newLeaderId } = req.body
+
+  if (req.user.role !== "ADMIN") {
+    return res.status(403).json({ error: "Solo admin puede reasignar" })
+  }
+
+  const votacion = await prisma.votacion.findUnique({ where: { id } })
+  if (!votacion) {
+    return res.status(404).json({ error: "No encontrada" })
+  }
+
+  const updated = await prisma.votacion.update({
+    where: { id },
+    data: {
+      leaderId: newLeaderId,
+      isDuplicate: false,
+      duplicatedFrom: null
+    }
+  })
+
+  res.json(updated)
+}
+
+// 🔎 Obtener duplicados de una votación base
+export const getVotacionDuplicates = async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const votacion = await prisma.votacion.findUnique({
+      where: { id },
+      include: {
+        duplicates: {
+          include: {
+            leader: true
+          }
+        }
+      }
+    })
+
+    if (!votacion) {
+      return res.status(404).json({ error: "No encontrada" })
+    }
+
+    res.json(votacion)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
 }
