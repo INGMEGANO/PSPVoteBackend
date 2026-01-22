@@ -71,33 +71,54 @@ export const createVotacion = async (req, res) => {
 
 export const getVotaciones = async (req, res) => {
   try {
-    const where =
-      req.user.role === "ADMIN"
-        ? {}
-        : { leaderId: req.user.leaderId }
+    let where = {}
 
+    if (req.user.role === "LIDER") {
+      if (!req.user.leaderId) {
+        return res.status(403).json({ error: "Líder sin asignación" })
+      }
+
+      where = { leaderId: req.user.leaderId }
+    }
+
+    // ADMIN => where queda {}
     const data = await prisma.votacion.findMany({
       where,
-      include: { leader: true }
+      include: { leader: true },
+      orderBy: { createdAt: "asc" }
     })
 
-    res.json(data)
+    const result = data.map((item, index) => ({
+      idnumber: index + 1,
+      id: item.id,
+      ...item
+    }))
+
+    res.json(result)
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
 }
 
+
 export const getVotacionById = async (req, res) => {
   const { id } = req.params
 
-  const votacion = await prisma.votacion.findUnique({ where: { id } })
+  const votacion = await prisma.votacion.findUnique({
+    where: { id }
+  })
 
   if (!votacion) {
     return res.status(404).json({ error: "No encontrada" })
   }
 
+  //console.log("ROLE:", req.user.role)
+  //console.log("USER leaderId:", req.user.leaderId)
+  //console.log("VOTACION leaderId:", votacion.leaderId)
+  // Si NO es ADMIN y además NO es el líder dueño → bloquear
   if (
     req.user.role !== "ADMIN" &&
+    req.user.role === "LIDER" &&
     votacion.leaderId !== req.user.leaderId
   ) {
     return res.status(403).json({ error: "No autorizado" })
@@ -105,6 +126,7 @@ export const getVotacionById = async (req, res) => {
 
   res.json(votacion)
 }
+
 
 
 export const updateVotacion = async (req, res) => {
@@ -167,10 +189,17 @@ export const getDuplicatedVotaciones = async (req, res) => {
       include: {
         leader: true,
         duplicateOf: true
-      }
+      },
+      orderBy: { createdAt: "asc" }
     });
 
-    res.json(data);
+    const result = data.map((item, index) => ({
+      idnumber: index + 1,
+      id: item.id,
+      ...item
+    }))
+
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
