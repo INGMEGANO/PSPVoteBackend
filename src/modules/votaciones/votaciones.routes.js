@@ -10,7 +10,8 @@ import {
   getDuplicatedVotaciones,
   getVotacionDuplicates,
   deactivateVotacion,
-  reassignVotacion
+  reassignVotacion,
+  toggleVotacionStatus
 } from "./votaciones.controller.js"
 
 const router = Router()
@@ -77,6 +78,12 @@ router.patch(
   "/:id/desactivar",
   allowRoles("ADMIN", "LIDER"),
   deactivateVotacion
+)
+
+router.patch(
+  "/:id/toggle-status",
+  allowRoles("ADMIN", "LIDER"),
+  toggleVotacionStatus
 )
 
 // Reasignar a otro líder

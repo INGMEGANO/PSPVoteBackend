@@ -281,3 +281,42 @@ export const getVotacionDuplicates = async (req, res) => {
     res.status(500).json({ error: error.message })
   }
 }
+
+export const toggleVotacionStatus = async (req, res) => {
+  const { id } = req.params
+  const { observation } = req.body
+  const { role, leaderId, userId } = req.user
+
+  const votacion = await prisma.votacion.findUnique({ where: { id } })
+  if (!votacion) {
+    return res.status(404).json({ error: "No encontrada" })
+  }
+
+  // Seguridad
+  if (role !== "ADMIN" && votacion.leaderId !== leaderId) {
+    return res.status(403).json({ error: "No autorizado" })
+  }
+
+  const newStatus = !votacion.isActive
+  const action = newStatus ? "ACTIVAR" : "DESACTIVAR"
+
+  const updated = await prisma.votacion.update({
+    where: { id },
+    data: { isActive: newStatus }
+  })
+
+  // Guardar historial
+  await prisma.votacionStatusLog.create({
+    data: {
+      votacionId: id,
+      userId,
+      action,
+      observation
+    }
+  })
+
+  res.json({
+    message: `Votación ${action.toLowerCase()} correctamente`,
+    votacion: updated
+  })
+}

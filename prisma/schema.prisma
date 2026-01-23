@@ -29,6 +29,8 @@ model User {
 
   isActive Boolean @default(true)
 
+  votacionStatusLogs VotacionStatusLog[]
+
   createdAt DateTime @default(now())
 }
 
@@ -106,6 +108,8 @@ model Votacion {
 
   esPago Boolean @default(false)
 
+  statusLogs VotacionStatusLog[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -152,9 +156,21 @@ model SedePrograma {
 }
 
 model TipoVinculacion {
-  id     String @id @default(uuid())
-  nombre String @unique
+  id     String  @id @default(uuid())
+  nombre String  @unique
   esPago Boolean @default(false)
 
   votaciones Votacion[]
+}
+
+model VotacionStatusLog {
+  id          String   @id @default(uuid())
+  votacionId  String
+  userId      String
+  action      String
+  observation String?
+  createdAt   DateTime @default(now())
+
+  votacion Votacion @relation(fields: [votacionId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
 }
