@@ -127,6 +127,34 @@ export const getVotacionById = async (req, res) => {
   res.json(votacion)
 }
 
+export const getVotacionesByPlanilla = async (req, res) => {
+  try {
+    const { planilla } = req.params;
+
+    const votaciones = await prisma.votacion.findMany({
+      where: {
+        planilla: Number(planilla)
+      },
+      orderBy: {
+        createdAt: "asc"
+      }
+    });
+
+    const result = votaciones.map((item, index) => ({
+      idnumber: index + 1, // consecutivo
+      ...item
+    }));
+
+    res.json({
+      planilla: Number(planilla),
+      total: votaciones.length,
+      votaciones: result
+    });
+
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
 
 
 export const updateVotacion = async (req, res) => {
@@ -320,3 +348,145 @@ export const toggleVotacionStatus = async (req, res) => {
     votacion: updated
   })
 }
+
+
+/**
+ * CREAR VOTACIONES (CARGA MASIVA)
+ * Convive con createVotacion
+ */
+export const createVotacionBulk = async (req, res) => {
+  try {
+    const votaciones = Array.isArray(req.body) ? req.body : [req.body];
+
+    const results = [];
+
+    // 🧾 OBTENER NÚMERO DE PLANILLA CONSECUTIVO
+    const lastPlanilla = await prisma.votacion.findFirst({
+      orderBy: { planilla: "desc" },
+      select: { planilla: true }
+    });
+
+    const planilla = lastPlanilla ? lastPlanilla.planilla + 1 : 1;
+
+    for (const item of votaciones) {
+      const {
+        nombre1,
+        nombre2,
+        apellido1,
+        apellido2,
+        cedula,
+        telefono,
+        direccion,
+        barrio,
+        puestoVotacion,
+        leaderId,
+        recommendedById,
+        programaId,
+        sedeId,
+        tipoId,
+        esPago
+      } = item;
+
+      if (!leaderId) {
+        results.push({
+          cedula,
+          error: "leaderId es obligatorio"
+        });
+        continue;
+      }
+
+      // 🔍 DUPLICADO POR CÉDULA
+      const existing = await prisma.votacion.findFirst({
+        where: { cedula }
+      });
+
+      const votacion = await prisma.votacion.create({
+        data: {
+          nombre1,
+          nombre2,
+          apellido1,
+          apellido2,
+          cedula,
+          telefono,
+          direccion,
+          barrio,
+          puestoVotacion,
+          leaderId,
+          recommendedById: recommendedById || null,
+          programaId: programaId || null,
+          sedeId: sedeId || null,
+          tipoId: tipoId || null,
+          esPago: esPago ?? null,
+
+          // 👇 NUEVO
+          planilla,
+
+          isDuplicate: !!existing,
+          duplicatedFrom: existing ? existing.id : null
+        }
+      });
+
+      results.push({
+        cedula,
+        id: votacion.id,
+        planilla,
+        isDuplicate: !!existing
+      });
+    }
+
+    res.status(201).json({
+      planilla,
+      total: results.length,
+      creados: results.filter(r => !r.error).length,
+      errores: results.filter(r => r.error).length,
+      results
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const updateVotacionBulkByPlanilla = async (req, res) => {
+  try {
+    const { planilla } = req.params;
+    const items = Array.isArray(req.body) ? req.body : [req.body];
+
+    const results = [];
+
+    for (const item of items) {
+      const { cedula, ...data } = item;
+
+      if (!cedula) {
+        results.push({
+          error: "cedula es obligatoria",
+          item
+        });
+        continue;
+      }
+
+      const updated = await prisma.votacion.updateMany({
+        where: {
+          planilla: Number(planilla),
+          cedula
+        },
+        data
+      });
+
+      results.push({
+        cedula,
+        actualizados: updated.count
+      });
+    }
+
+    res.json({
+      planilla: Number(planilla),
+      total: results.length,
+      results
+    });
+
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};

@@ -3,9 +3,12 @@ import { authMiddleware } from "../../middlewares/auth.middleware.js"
 import { allowRoles } from "../../middlewares/role.middleware.js"
 import {
   createVotacion,
+  createVotacionBulk,
   getVotaciones,
   getVotacionById,
+  getVotacionesByPlanilla,
   updateVotacion,
+  updateVotacionBulkByPlanilla,
   deleteVotacion,
   getDuplicatedVotaciones,
   getVotacionDuplicates,
@@ -25,6 +28,15 @@ router.post(
   "/",
   allowRoles("ADMIN", "LIDER", "DIGITADOR"),
   createVotacion
+)
+
+/* =======================
+   CREAR MASIVO (BULK)
+======================= */
+router.post(
+  "/bulk",
+  allowRoles("ADMIN", "LIDER", "DIGITADOR"),
+  createVotacionBulk
 )
 
 /* =======================
@@ -55,6 +67,12 @@ router.get(
   getVotaciones
 )
 
+router.get(
+  "/planilla/:planilla",
+  allowRoles("ADMIN", "LIDER"),
+  getVotacionesByPlanilla
+);
+
 /* =======================
    CRUD POR ID
 ======================= */
@@ -72,6 +90,17 @@ router.put(
   allowRoles("ADMIN", "LIDER"),
   updateVotacion
 )
+
+/* =======================
+   ACTUALIZAR POR PLANILLA
+======================= */
+router.patch(
+  "/planilla/:planilla/bulk",
+  allowRoles("ADMIN", "LIDER"),
+  updateVotacionBulkByPlanilla
+);
+
+
 
 // Desactivar (soft delete)
 router.patch(
