@@ -26,6 +26,8 @@ model User {
 
   leaderId String?
   leader   Leader? @relation(fields: [leaderId], references: [id])
+  
+  votacionesComoDigitador Votacion[] @relation("DigitadorVotaciones")
 
   isActive Boolean @default(true)
 
@@ -89,6 +91,12 @@ model Votacion {
   // Líder recomendado para esta votación
   recommendedById String?
   recommendedBy   Leader? @relation("RecommendedVotaciones", fields: [recommendedById], references: [id])
+
+  // Digitador que ingresa masivamente
+  digitadorId      String?
+  digitador        User?     @relation("DigitadorVotaciones", fields: [digitadorId], references: [id])
+
+
 
   // 🔥 CONTROL REAL
   isActive       Boolean    @default(true)

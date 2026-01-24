@@ -72,19 +72,24 @@ export const createVotacion = async (req, res) => {
 export const getVotaciones = async (req, res) => {
   try {
     let where = {}
-
+console.log("REQ.USER:", req.user);
     if (req.user.role === "LIDER") {
       if (!req.user.leaderId) {
         return res.status(403).json({ error: "Líder sin asignación" })
       }
 
-      where = { leaderId: req.user.leaderId }
+      where = {
+        OR: [
+          { leaderId: req.user.leaderId },  // lo que es su líder
+          { digitadorId: req.user.userId }      // lo que digitó él
+        ]
+      }
     }
 
     // ADMIN => where queda {}
     const data = await prisma.votacion.findMany({
       where,
-      include: { leader: true },
+      include: { leader: true, digitador: true },
       orderBy: { createdAt: "asc" }
     })
 
@@ -294,7 +299,8 @@ export const getVotacionDuplicates = async (req, res) => {
       include: {
         duplicates: {
           include: {
-            leader: true
+            leader: true,
+            digitador: true
           }
         }
       }
@@ -357,6 +363,8 @@ export const toggleVotacionStatus = async (req, res) => {
 export const createVotacionBulk = async (req, res) => {
   try {
     const votaciones = Array.isArray(req.body) ? req.body : [req.body];
+    const digitadorId = req.user.userId;
+
 
     const results = [];
 
@@ -412,6 +420,7 @@ export const createVotacionBulk = async (req, res) => {
           barrio,
           puestoVotacion,
           leaderId,
+          digitadorId,
           recommendedById: recommendedById || null,
           programaId: programaId || null,
           sedeId: sedeId || null,
