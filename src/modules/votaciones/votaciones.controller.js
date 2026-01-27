@@ -175,7 +175,11 @@ export const updateVotacion = async (req, res) => {
   const userLeaderId = userFromDb.leaderId;
 
   // 🔹 Validación de permisos
-  if (req.user.role !== "ADMIN" && oldData.leaderId !== userLeaderId) {
+  if (
+    req.user.role !== "ADMIN" &&
+    oldData.leaderId !== userLeaderId &&
+    oldData.digitadorId !== req.user.userId
+  ) {
     return res.status(403).json({ error: "No autorizado" });
   }
 
