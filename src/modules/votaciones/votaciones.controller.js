@@ -121,12 +121,19 @@ export const getVotacionById = async (req, res) => {
   //console.log("USER leaderId:", req.user.leaderId)
   //console.log("VOTACION leaderId:", votacion.leaderId)
   // Si NO es ADMIN y además NO es el líder dueño → bloquear
-  if (
+  /*if (
     req.user.role !== "ADMIN" &&
     req.user.role === "LIDER" &&
     votacion.leaderId !== req.user.leaderId
   ) {
     return res.status(403).json({ error: "No autorizado" })
+  }*/
+  if (
+    req.user.role !== "ADMIN" &&
+    oldData.leaderId !== userLeaderId &&
+    oldData.digitadorId !== req.user.userId
+  ) {
+    return res.status(403).json({ error: "No autorizado" });
   }
 
   res.json(votacion)
