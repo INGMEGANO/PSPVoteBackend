@@ -29,6 +29,8 @@ model User {
   
   votacionesComoDigitador Votacion[] @relation("DigitadorVotaciones")
 
+  consultasVotacion VotacionConsulta[]
+
   isActive Boolean @default(true)
 
   votacionStatusLogs VotacionStatusLog[]
@@ -120,6 +122,8 @@ model Votacion {
 
   statusLogs VotacionStatusLog[]
 
+  consultas VotacionConsulta[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -183,4 +187,23 @@ model VotacionStatusLog {
 
   votacion Votacion @relation(fields: [votacionId], references: [id])
   user     User     @relation(fields: [userId], references: [id])
+}
+
+
+model VotacionConsulta {
+  id String @id @default(uuid())
+
+  votacionId String
+  votacion   Votacion @relation(fields: [votacionId], references: [id], onDelete: Cascade)
+
+  fuente       String?
+  estado       String
+  observacion  String?
+  consultadoEn DateTime @default(now())
+
+  userId String?
+  user   User? @relation(fields: [userId], references: [id])
+
+  @@index([votacionId])
+  @@index([estado])
 }

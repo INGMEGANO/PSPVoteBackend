@@ -18,6 +18,7 @@ import votacionesRoutes from "./modules/votaciones/votaciones.routes.js"
 
 import analyticsRoutes from "./modules/analytics/analytics.routes.js";
 
+import reportsRoutes from "./modules/reports/reports.routes.js"
 
 
 
@@ -43,6 +44,8 @@ app.use('/api/puestos-votacion', puestoVotacionRoutes);
 app.use("/api/votaciones", votacionesRoutes)
 
 app.use("/api/analytics", analyticsRoutes);
+
+app.use("/api/reports", reportsRoutes)
 
 
 
