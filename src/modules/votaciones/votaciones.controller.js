@@ -107,37 +107,35 @@ console.log("REQ.USER:", req.user);
 
 
 export const getVotacionById = async (req, res) => {
-  const { id } = req.params
+  const { id } = req.params;
 
+  // 🔹 Buscar votación
   const votacion = await prisma.votacion.findUnique({
     where: { id }
-  })
+  });
 
   if (!votacion) {
-    return res.status(404).json({ error: "No encontrada" })
+    return res.status(404).json({ error: "No encontrada" });
   }
 
-  //console.log("ROLE:", req.user.role)
-  //console.log("USER leaderId:", req.user.leaderId)
-  //console.log("VOTACION leaderId:", votacion.leaderId)
-  // Si NO es ADMIN y además NO es el líder dueño → bloquear
-  /*if (
-    req.user.role !== "ADMIN" &&
-    req.user.role === "LIDER" &&
-    votacion.leaderId !== req.user.leaderId
-  ) {
-    return res.status(403).json({ error: "No autorizado" })
-  }*/
+  // 🔹 Traer el leaderId real del usuario
+  const userFromDb = await prisma.user.findUnique({
+    where: { id: req.user.userId }
+  });
+  const userLeaderId = userFromDb.leaderId;
+
+  // 🔹 Validación de permisos
   if (
     req.user.role !== "ADMIN" &&
-    oldData.leaderId !== userLeaderId &&
-    oldData.digitadorId !== req.user.userId
+    votacion.leaderId !== userLeaderId &&
+    votacion.digitadorId !== req.user.userId
   ) {
     return res.status(403).json({ error: "No autorizado" });
   }
 
-  res.json(votacion)
-}
+  res.json(votacion);
+};
+
 
 export const getVotacionesByPlanilla = async (req, res) => {
   try {
