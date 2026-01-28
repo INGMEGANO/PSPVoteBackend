@@ -138,40 +138,47 @@ export const getVotacionById = async (req, res) => {
 
 export const getVotacionByCedula = async (req, res) => {
   const { cedula } = req.params;
+  const { role, userId } = req.user;
 
-  // 🔹 Buscar votación por cédula
+  let whereClause = { cedula };
+
+  // 🔹 ADMIN ve cualquiera
+  if (role === "ADMIN") {
+    const votacion = await prisma.votacion.findFirst({ where: whereClause });
+
+    if (!votacion) {
+      return res.status(404).json({ error: "No encontrada" });
+    }
+
+    return res.json(votacion);
+  }
+
+  // 🔹 DIGITADOR → solo las que él creó
+  if (role === "DIGITADOR") {
+    whereClause.digitadorId = userId;
+  }
+
+  // 🔹 LÍDER → solo las de su líder
+  if (role === "LIDER") {
+    const userFromDb = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { leaderId: true }
+    });
+
+    whereClause.leaderId = userFromDb.leaderId;
+  }
+
   const votacion = await prisma.votacion.findFirst({
-    where: { cedula }
+    where: whereClause
   });
 
   if (!votacion) {
-    return res.status(404).json({ error: "No encontrada" });
+    return res.status(403).json({ error: "No autorizado o no encontrada" });
   }
 
-  // 🔹 Si es ADMIN → pasa directo
-  if (req.user.role === "ADMIN") {
-    return res.json(votacion);
-  }
-
-  // 🔹 Si es DIGITADOR y él la creó → permitido
-  if (votacion.digitadorId === req.user.userId) {
-    return res.json(votacion);
-  }
-
-  // 🔹 Si es LÍDER → validar contra su leaderId
-  if (req.user.role === "LIDER") {
-    const userFromDb = await prisma.user.findUnique({
-      where: { id: req.user.userId }
-    });
-
-    if (votacion.leaderId === userFromDb.leaderId) {
-      return res.json(votacion);
-    }
-  }
-
-  // ❌ Si no cumple nada
-  return res.status(403).json({ error: "No autorizado" });
+  return res.json(votacion);
 };
+
 
 
 export const getVotacionesByPlanilla = async (req, res) => {
