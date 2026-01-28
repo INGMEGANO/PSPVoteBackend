@@ -6,6 +6,7 @@ import {
   createVotacionBulk,
   getVotaciones,
   getVotacionById,
+  getVotacionByCedula,
   getVotacionesByPlanilla,
   updateVotacion,
   updateVotacionBulkByPlanilla,
@@ -83,6 +84,12 @@ router.get(
   allowRoles("ADMIN", "LIDER"),
   getVotacionById
 )
+
+router.get(
+  "/cedula/:cedula",
+  allowRoles("ADMIN", "LIDER", "DIGITADOR"),
+  getVotacionByCedula
+);
 
 // Actualizar
 router.put(

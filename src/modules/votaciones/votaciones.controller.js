@@ -136,6 +136,43 @@ export const getVotacionById = async (req, res) => {
   res.json(votacion);
 };
 
+export const getVotacionByCedula = async (req, res) => {
+  const { cedula } = req.params;
+
+  // 🔹 Buscar votación por cédula
+  const votacion = await prisma.votacion.findFirst({
+    where: { cedula }
+  });
+
+  if (!votacion) {
+    return res.status(404).json({ error: "No encontrada" });
+  }
+
+  // 🔹 Si es ADMIN → pasa directo
+  if (req.user.role === "ADMIN") {
+    return res.json(votacion);
+  }
+
+  // 🔹 Si es DIGITADOR y él la creó → permitido
+  if (votacion.digitadorId === req.user.userId) {
+    return res.json(votacion);
+  }
+
+  // 🔹 Si es LÍDER → validar contra su leaderId
+  if (req.user.role === "LIDER") {
+    const userFromDb = await prisma.user.findUnique({
+      where: { id: req.user.userId }
+    });
+
+    if (votacion.leaderId === userFromDb.leaderId) {
+      return res.json(votacion);
+    }
+  }
+
+  // ❌ Si no cumple nada
+  return res.status(403).json({ error: "No autorizado" });
+};
+
 
 export const getVotacionesByPlanilla = async (req, res) => {
   try {
