@@ -84,7 +84,9 @@ model Votacion {
   telefono       String?
   direccion      String?
   barrio         String?
+  
   puestoVotacion String?
+  
 
   // Relación con líder
   leaderId String
@@ -144,6 +146,9 @@ model PuestoVotacion {
   direccion    String
   latitud      Decimal  @db.Decimal(10, 7)
   longitud     Decimal  @db.Decimal(10, 7)
+
+  
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

@@ -60,9 +60,10 @@ CREATE TABLE `Votacion` (
     `telefono` VARCHAR(191) NULL,
     `direccion` VARCHAR(191) NULL,
     `barrio` VARCHAR(191) NULL,
-    `puestoVotacion` VARCHAR(191) NULL,
+    `puestoVotacionId` VARCHAR(191) NULL,
     `leaderId` VARCHAR(191) NOT NULL,
     `recommendedById` VARCHAR(191) NULL,
+    `digitadorId` VARCHAR(191) NULL,
     `isActive` BOOLEAN NOT NULL DEFAULT true,
     `isDuplicate` BOOLEAN NOT NULL DEFAULT false,
     `duplicatedFrom` VARCHAR(191) NULL,
@@ -70,6 +71,7 @@ CREATE TABLE `Votacion` (
     `sedeId` VARCHAR(191) NULL,
     `tipoId` VARCHAR(191) NULL,
     `esPago` BOOLEAN NOT NULL DEFAULT false,
+    `planilla` INTEGER NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
@@ -129,6 +131,33 @@ CREATE TABLE `TipoVinculacion` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- CreateTable
+CREATE TABLE `VotacionStatusLog` (
+    `id` VARCHAR(191) NOT NULL,
+    `votacionId` VARCHAR(191) NOT NULL,
+    `userId` VARCHAR(191) NOT NULL,
+    `action` VARCHAR(191) NOT NULL,
+    `observation` VARCHAR(191) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `VotacionConsulta` (
+    `id` VARCHAR(191) NOT NULL,
+    `votacionId` VARCHAR(191) NOT NULL,
+    `fuente` VARCHAR(191) NULL,
+    `estado` VARCHAR(191) NOT NULL,
+    `observacion` VARCHAR(191) NULL,
+    `consultadoEn` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `userId` VARCHAR(191) NULL,
+
+    INDEX `VotacionConsulta_votacionId_idx`(`votacionId`),
+    INDEX `VotacionConsulta_estado_idx`(`estado`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 -- AddForeignKey
 ALTER TABLE `User` ADD CONSTRAINT `User_roleId_fkey` FOREIGN KEY (`roleId`) REFERENCES `Role`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
@@ -139,10 +168,16 @@ ALTER TABLE `User` ADD CONSTRAINT `User_leaderId_fkey` FOREIGN KEY (`leaderId`) 
 ALTER TABLE `Leader` ADD CONSTRAINT `Leader_recommendedById_fkey` FOREIGN KEY (`recommendedById`) REFERENCES `Leader`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE `Votacion` ADD CONSTRAINT `Votacion_puestoVotacionId_fkey` FOREIGN KEY (`puestoVotacionId`) REFERENCES `PuestoVotacion`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE `Votacion` ADD CONSTRAINT `Votacion_leaderId_fkey` FOREIGN KEY (`leaderId`) REFERENCES `Leader`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `Votacion` ADD CONSTRAINT `Votacion_recommendedById_fkey` FOREIGN KEY (`recommendedById`) REFERENCES `Leader`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `Votacion` ADD CONSTRAINT `Votacion_digitadorId_fkey` FOREIGN KEY (`digitadorId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `Votacion` ADD CONSTRAINT `Votacion_duplicatedFrom_fkey` FOREIGN KEY (`duplicatedFrom`) REFERENCES `Votacion`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
@@ -158,3 +193,15 @@ ALTER TABLE `Votacion` ADD CONSTRAINT `Votacion_tipoId_fkey` FOREIGN KEY (`tipoI
 
 -- AddForeignKey
 ALTER TABLE `SedePrograma` ADD CONSTRAINT `SedePrograma_programaId_fkey` FOREIGN KEY (`programaId`) REFERENCES `Programa`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `VotacionStatusLog` ADD CONSTRAINT `VotacionStatusLog_votacionId_fkey` FOREIGN KEY (`votacionId`) REFERENCES `Votacion`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `VotacionStatusLog` ADD CONSTRAINT `VotacionStatusLog_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `VotacionConsulta` ADD CONSTRAINT `VotacionConsulta_votacionId_fkey` FOREIGN KEY (`votacionId`) REFERENCES `Votacion`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `VotacionConsulta` ADD CONSTRAINT `VotacionConsulta_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;

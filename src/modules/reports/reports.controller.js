@@ -22,23 +22,25 @@ export const dashboard = async (req, res) => {
       select: {
         tipo: { select: { nombre: true } },
         leader: { select: { id: true, name: true } },
-        programa: { select: { nombre: true } }
+        programa: { select: { nombre: true } },
+        puestoVotacion: true
       }
     });
 
-    const total = votaciones.length;
+    const totalGeneral = votaciones.length;
     let pago = 0;
     let noPago = 0;
 
     const lideres = {};
     const programas = {};
+    const puestos = {};
     const tipos = {};
 
     votaciones.forEach(v => {
       const esCorazon = v.tipo?.nombre === 'CORAZÓN';
       esCorazon ? noPago++ : pago++;
 
-      // 👤 líder
+      // 👤 LÍDER
       if (v.leader) {
         if (!lideres[v.leader.id]) {
           lideres[v.leader.id] = {
@@ -48,11 +50,13 @@ export const dashboard = async (req, res) => {
             total: 0
           };
         }
-        esCorazon ? lideres[v.leader.id].noPago++ : lideres[v.leader.id].pago++;
+        esCorazon
+          ? lideres[v.leader.id].noPago++
+          : lideres[v.leader.id].pago++;
         lideres[v.leader.id].total++;
       }
 
-      // 🏢 programa
+      // 🏢 PROGRAMA
       const prog = v.programa?.nombre || 'SIN PROGRAMA';
       if (!programas[prog]) {
         programas[prog] = { pago: 0, noPago: 0, total: 0 };
@@ -60,23 +64,68 @@ export const dashboard = async (req, res) => {
       esCorazon ? programas[prog].noPago++ : programas[prog].pago++;
       programas[prog].total++;
 
-      // 🔖 tipo
+      // 🏫 PUESTO
+      const puesto = v.puestoVotacion || 'SIN PUESTO';
+      if (!puestos[puesto]) {
+        puestos[puesto] = { pago: 0, noPago: 0, total: 0 };
+      }
+      esCorazon ? puestos[puesto].noPago++ : puestos[puesto].pago++;
+      puestos[puesto].total++;
+
+      // 🔖 TIPO
       const tipo = v.tipo?.nombre || 'SIN TIPO';
       tipos[tipo] = (tipos[tipo] || 0) + 1;
     });
 
     res.json({
-      totalVotaciones: total,
+      totalVotaciones: totalGeneral,
+
+      // 🔢 RESUMEN GENERAL
       pagos: [
-        { esPago: true, total: pago, porcentaje: percent(pago, total) },
-        { esPago: false, total: noPago, porcentaje: percent(noPago, total) }
+        {
+          esPago: true,
+          total: pago,
+          porcentaje: percent(pago, totalGeneral)
+        },
+        {
+          esPago: false,
+          total: noPago,
+          porcentaje: percent(noPago, totalGeneral)
+        }
       ],
-      porLider: Object.values(lideres),
+
+      // 👤 POR LÍDER (porcentaje sobre total general)
+      porLider: Object.values(lideres).map(l => ({
+        ...l,
+        porcentajePago: percent(l.pago, totalGeneral),
+        porcentajeNoPago: percent(l.noPago, totalGeneral),
+        porcentajeTotal: percent(l.total, totalGeneral)
+      })),
+
+      // 🏢 POR PROGRAMA
       porPrograma: Object.entries(programas).map(([k, v]) => ({
         programa: k,
-        ...v
+        ...v,
+        porcentajePago: percent(v.pago, totalGeneral),
+        porcentajeNoPago: percent(v.noPago, totalGeneral),
+        porcentajeTotal: percent(v.total, totalGeneral)
       })),
-      porTipo: tipos
+
+      // 🏫 POR PUESTO DE VOTACIÓN
+      porPuestoVotacion: Object.entries(puestos).map(([k, v]) => ({
+        puestoVotacion: k,
+        ...v,
+        porcentajePago: percent(v.pago, totalGeneral),
+        porcentajeNoPago: percent(v.noPago, totalGeneral),
+        porcentajeTotal: percent(v.total, totalGeneral)
+      })),
+
+      // 🔖 POR TIPO
+      porTipo: Object.entries(tipos).map(([k, v]) => ({
+        tipo: k,
+        total: v,
+        porcentaje: percent(v, totalGeneral)
+      }))
     });
 
   } catch (error) {
@@ -315,34 +364,50 @@ export const dashboardResumen = async (req, res) => {
   try {
     const where = buildDashboardWhere(req.user, req.query);
 
+    // 1️⃣ Traemos votaciones (con IDs)
     const votaciones = await prisma.votacion.findMany({
       where,
       select: {
         leaderId: true,
         programaId: true,
-        tipo: {
-          select: { nombre: true }
-        },
-        leader: {
-          select: { name: true }
-        },
-        programa: {
-          select: { nombre: true }
-        }
+        puestoVotacion: true, // ID del puesto
+        tipo: { select: { nombre: true } },
+        leader: { select: { name: true } },
+        programa: { select: { nombre: true } }
       }
     });
 
-    const total = votaciones.length;
+    // 2️⃣ Traer TODOS los puestos usados en una sola consulta
+    const puestoIds = [
+      ...new Set(
+        votaciones
+          .map(v => v.puestoVotacion)
+          .filter(Boolean)
+      )
+    ];
 
+    const puestos = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true }
+    });
+
+    // 3️⃣ Mapa id → nombre
+    const puestoMap = {};
+    puestos.forEach(p => {
+      puestoMap[p.id] = p.puesto;
+    });
+
+    const total = votaciones.length;
     let pago = 0;
     let noPago = 0;
 
     const porLider = {};
     const porPrograma = {};
+    const porPuesto = {};
 
+    // 4️⃣ Procesar resumen
     votaciones.forEach(v => {
       const esNoPago = v.tipo?.nombre === 'CORAZÓN';
-
       esNoPago ? noPago++ : pago++;
 
       // 👤 LÍDER
@@ -355,6 +420,7 @@ export const dashboardResumen = async (req, res) => {
             noPago: 0
           };
         }
+
         esNoPago
           ? porLider[v.leaderId].noPago++
           : porLider[v.leaderId].pago++;
@@ -373,27 +439,62 @@ export const dashboardResumen = async (req, res) => {
         : porPrograma[prog].pago++;
 
       porPrograma[prog].total++;
+
+      // 🏫 PUESTO DE VOTACIÓN (NOMBRE REAL)
+      const puestoNombre = puestoMap[v.puestoVotacion] || 'SIN PUESTO';
+
+      if (!porPuesto[puestoNombre]) {
+        porPuesto[puestoNombre] = { total: 0, pago: 0, noPago: 0 };
+      }
+
+      esNoPago
+        ? porPuesto[puestoNombre].noPago++
+        : porPuesto[puestoNombre].pago++;
+
+      porPuesto[puestoNombre].total++;
     });
 
+    // 5️⃣ Helper porcentajes
+    const conPorcentajes = obj => ({
+      ...obj,
+      porcentajePago: obj.total
+        ? Number(((obj.pago / obj.total) * 100).toFixed(2))
+        : 0,
+      porcentajeNoPago: obj.total
+        ? Number(((obj.noPago / obj.total) * 100).toFixed(2))
+        : 0
+    });
+
+    // 6️⃣ Respuesta
     res.json({
       total,
       pagos: {
         pago,
         noPago,
-        porcentajePago: total ? Number(((pago / total) * 100).toFixed(2)) : 0,
-        porcentajeNoPago: total ? Number(((noPago / total) * 100).toFixed(2)) : 0
+        porcentajePago: total
+          ? Number(((pago / total) * 100).toFixed(2))
+          : 0,
+        porcentajeNoPago: total
+          ? Number(((noPago / total) * 100).toFixed(2))
+          : 0
       },
-      porLider: Object.values(porLider),
+      porLider: Object.values(porLider).map(conPorcentajes),
       porPrograma: Object.entries(porPrograma).map(([k, v]) => ({
         programa: k,
-        ...v
+        ...conPorcentajes(v)
+      })),
+      porPuesto: Object.entries(porPuesto).map(([k, v]) => ({
+        puestoVotacion: k,
+        ...conPorcentajes(v)
       }))
     });
 
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 export const exportDashboard = async (req, res) => {
