@@ -11,6 +11,8 @@ import {
   exportDashboard,
   exportDashboardXLSX,
   exportPdfPorLider,
+  exportZipPorLider,
+  exportExcelPorLider,
   previewPorLider
 } from "./reports.controller.js"
 
@@ -31,6 +33,9 @@ router.get("/dashboard/resumen", dashboardResumen);
 router.get("/dashboard/export", exportDashboard);
 router.get("/dashboard/exportxls", exportDashboardXLSX);
 router.get("/dashboard/exportpdf", exportPdfPorLider);
+router.get("/dashboard/exportzippdf", exportZipPorLider);
+router.get("/dashboard/exportexcel", exportExcelPorLider);
+
 router.get("/dashboard/previewpdf", previewPorLider);
 
 export default router

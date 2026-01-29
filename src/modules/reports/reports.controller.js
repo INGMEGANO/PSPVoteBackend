@@ -3,12 +3,19 @@ import { buildWhereByRole, buildDashboardWhere } from "./reports.utils.js"
 import { Parser } from 'json2csv';
 import XLSX from "xlsx";
 import fs from "fs";
+
+
+import { createRequire } from "module";
 import path from "path";
-import PdfPrinter from "pdfmake";
-import pdfMake from "pdfmake/build/pdfmake.js";
-import pdfFonts from "pdfmake/build/vfs_fonts.js";
-import stream from "stream";
-import { fileURLToPath } from "url";
+
+import puppeteer from "puppeteer";
+import archiver from "archiver";
+
+
+
+
+
+
 
 /**
  * 📊 DASHBOARD GENERAL
@@ -175,6 +182,10 @@ export const dashboard = async (req, res) => {
 /**
  * 👥 POR LÍDER
  */
+const percent = (value, total) => {
+  if (!total || total === 0) return 0;
+  return Number(((value / total) * 100).toFixed(2));
+};
 export const porLider = async (req, res) => {
   try {
     const where = buildDashboardWhere(req.user, req.query);
@@ -680,25 +691,340 @@ export const exportDashboardXLSX = async (req, res) => {
 };
 
 
+const lideres = await prisma.leader.findMany({
+  where: { isActive: true },
+  include: {
+    votaciones: {
+      include: {
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    },
+  },
+});
 
-pdfMake.vfs = pdfFonts.vfs; 
+// Función para generar HTML del reporte
+function generarHtmlReporte(lideres, puestosMap) {
+  let html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial; font-size: 11px; margin: 20px; }
+          h1 { text-align: center; }
+          h2 { margin-top: 10px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; page-break-inside: auto; }
+          th, td { border: 1px solid #ccc; padding: 4px; text-align: left; }
+          th { background: #f0f0f0; }
+          .page-break { page-break-before: always; }
+        </style>
+      </head>
+      <body>
+        <h1>Reporte por Líder</h1>
+  `;
+
+  lideres.forEach((lider, index) => {
+    if (!lider.votaciones.length) return;
+
+    if (index !== 0) html += `<div class="page-break"></div>`; // página nueva por líder
+
+    // Información superior del líder
+    html += `
+      <h2>Líder: ${lider.name}</h2>
+      <p>Recomendado por: ${lider.votaciones[0].recommendedBy?.name || "N/A"}</p>
+      <p>Digitador: ${lider.votaciones[0].digitador?.username || "N/A"}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Cédula</th>
+            <th>Nombre Completo</th>
+            <th>Teléfono</th>
+            <th>Dirección</th>
+            <th>Barrio</th>
+            <th>Puesto de votación</th>
+            <th>Programa</th>
+            <th>Tipo</th>
+            <th>Pago</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    lider.votaciones.forEach((v, i) => {
+  const nombreCompleto = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+  const esPago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+  const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+  
+
+      html += `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${v.cedula}</td>
+            <td>${nombreCompleto}</td>
+            <td>${v.telefono || ""}</td>
+            <td>${v.direccion || ""}</td>
+            <td>${v.barrio || ""}</td>
+            <td>${puestoNombre}</td>
+            <td>${v.programa?.nombre || ""}</td>
+            <td>${v.tipo?.nombre || ""}</td>
+            <td>${esPago}</td>
+            <td>${new Date(v.createdAt).toLocaleDateString()}</td>
+          </tr>
+        `;
+      });
+
+    html += `
+        </tbody>
+      </table>
+    `;
+  });
+
+  html += `</body></html>`;
+  return html;
+}
+
+function generarHtmlReportePorLider(lider, puestosMap) {
+  let html = `
+  <html>
+    <head>
+      <style>
+        body { font-family: Arial; font-size: 11px; margin: 20px; }
+        h2 { margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 4px; }
+        th { background: #f0f0f0; }
+      </style>
+    </head>
+    <body>
+      <h2>Líder: ${lider.name}</h2>
+      <p>Recomendado por: ${lider.votaciones[0]?.recommendedBy?.name || "N/A"}</p>
+      <p>Digitador: ${lider.votaciones[0]?.digitador?.username || "N/A"}</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Cédula</th>
+            <th>Nombre Completo</th>
+            <th>Teléfono</th>
+            <th>Dirección</th>
+            <th>Barrio</th>
+            <th>Puesto</th>
+            <th>Programa</th>
+            <th>Tipo</th>
+            <th>Pago</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  lider.votaciones.forEach((v, i) => {
+    const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+    const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+    const puesto = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+    html += `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${v.cedula}</td>
+        <td>${nombre}</td>
+        <td>${v.telefono || ""}</td>
+        <td>${v.direccion || ""}</td>
+        <td>${v.barrio || ""}</td>
+        <td>${puesto}</td>
+        <td>${v.programa?.nombre || ""}</td>
+        <td>${v.tipo?.nombre || ""}</td>
+        <td>${pago}</td>
+        <td>${new Date(v.createdAt).toLocaleDateString()}</td>
+      </tr>
+    `;
+  });
+
+  html += `</tbody></table></body></html>`;
+  return html;
+}
 
 
-const formatDate = (date) => date.toISOString().split("T")[0];
-const percent = (value, total) => (total ? Number(((value / total) * 100).toFixed(2)) : 0);
 
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Función para exportar PDF
 
 export const exportPdfPorLider = async (req, res) => {
   try {
-    console.log("📌 Inicio exportPdfPorLider");
+
+    const formato = req.query.formato || "carta";
+
+    const pdfSize =
+      formato === "oficio"
+        ? { width: "216mm", height: "340mm" }
+        : { format: "A4" };
+
 
     const where = buildWhereByRole(req.user);
-    console.log("🔹 Where generado:", where);
 
-    // Traer todos los líderes con sus votaciones
+    // 1️⃣ Traer líderes con sus votaciones
+    const lideres = await prisma.leader.findMany({
+      where: { isActive: true },
+      include: {
+        votaciones: {
+          where, // tu filtro dinámico
+          include: {
+            tipo: { select: { nombre: true } },
+            programa: { select: { nombre: true } },
+            digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } }, // líder que recomendó
+          },
+          orderBy: { createdAt: "asc" }, 
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    // 2️⃣ Lookup de puestos de votación para traducir IDs a nombre real
+    const puestoIds = [
+      ...new Set(lideres.flatMap(l => l.votaciones.map(v => v.puestoVotacion)).filter(Boolean))
+    ];
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true }
+    });
+    const puestosMap = {};
+    puestosDb.forEach(p => { puestosMap[p.id] = p.puesto; });
+
+    // 3️⃣ Generamos HTML
+    const html = generarHtmlReporte(lideres, puestosMap);
+
+    // 4️⃣ Puppeteer para PDF
+    const browser = await puppeteer.launch({ headless: "new" });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdf = await page.pdf({
+      ...pdfSize,
+      printBackground: true,
+      landscape: true,
+      displayHeaderFooter: true,
+      headerTemplate: `<span></span>`,
+      footerTemplate: `
+        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
+          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+        </div>
+      `,
+      margin: {
+        top: "15mm",
+        bottom: "20mm",
+        left: "15mm",
+        right: "15mm",
+      },
+    });
+
+    await browser.close();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_por_lider.pdf");
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+export const exportZipPorLider = async (req, res) => {
+  const where = buildWhereByRole(req.user);
+  const formato = req.query.formato || "carta";
+
+  const pdfSize =
+    formato === "oficio"
+      ? { width: "216mm", height: "340mm" }
+      : { format: "A4" };
+
+  const lideres = await prisma.leader.findMany({
+    where: { isActive: true },
+    include: {
+      votaciones: {
+        where,
+        include: {
+          tipo: { select: { nombre: true } },
+          programa: { select: { nombre: true } },
+          digitador: { select: { username: true } },
+          recommendedBy: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  // Puestos
+  const puestoIds = [...new Set(lideres.flatMap(l => l.votaciones.map(v => v.puestoVotacion)).filter(Boolean))];
+  const puestosDb = await prisma.puestoVotacion.findMany({
+    where: { id: { in: puestoIds } },
+    select: { id: true, puesto: true },
+  });
+  const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", "attachment; filename=reportes_por_lider.zip");
+
+  const archive = archiver("zip");
+  archive.pipe(res);
+
+  const browser = await puppeteer.launch({ headless: "new" });
+
+  const BATCH_SIZE = 3;
+
+for (let i = 0; i < lideres.length; i += BATCH_SIZE) {
+  const batch = lideres.slice(i, i + BATCH_SIZE);
+
+  for (const lider of batch) {
+    if (!lider.votaciones.length) continue;
+
+    const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(0);
+    page.setDefaultTimeout(0);
+
+    const html = generarHtmlReportePorLider(lider, puestosMap);
+    await page.setContent(html);
+
+    const pdfUint8 = await page.pdf({
+      ...pdfSize,
+      landscape: true,
+      displayHeaderFooter: true,
+      headerTemplate: `<span></span>`,
+      footerTemplate: `
+        <div style="width:100%; font-size:9px; text-align:center;">
+          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+        </div>
+      `,
+      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+    });
+
+    const pdfBuffer = Buffer.from(pdfUint8);
+    await page.close();
+
+    archive.append(pdfBuffer, {
+      name: `reporte_lider_${lider.name.replace(/\s+/g, "_").toLowerCase()}.pdf`,
+    });
+  }
+
+  // 🧠 pequeño respiro entre lotes (opcional pero recomendado)
+  await new Promise(r => setTimeout(r, 200));
+}
+
+  await browser.close();
+  await archive.finalize();
+};
+
+
+export const exportExcelPorLider = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+
     const lideres = await prisma.leader.findMany({
       where: { isActive: true },
       include: {
@@ -707,88 +1033,82 @@ export const exportPdfPorLider = async (req, res) => {
           include: {
             tipo: { select: { nombre: true } },
             programa: { select: { nombre: true } },
-            sede: { select: { nombre: true } },
             digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } },
           },
           orderBy: { createdAt: "asc" },
         },
       },
+      orderBy: { name: "asc" },
     });
 
-    console.log(`🔹 Líderes encontrados: ${lideres.length}`);
+    const puestoIds = [
+      ...new Set(
+        lideres.flatMap(l =>
+          l.votaciones.map(v => v.puestoVotacion).filter(Boolean)
+        )
+      )
+    ];
 
-    const docDefinition = {
-      pageSize: "A4",
-      pageMargins: [40, 60, 40, 60],
-      content: [],
-    };
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
 
-    let totalVotantes = 0;
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+    const rows = [];
 
     for (const lider of lideres) {
-      if (!lider.votaciones.length) continue; // omitir líderes sin votantes
-
-      console.log(`🔹 Procesando líder: ${lider.name}, votantes: ${lider.votaciones.length}`);
-      totalVotantes += lider.votaciones.length;
-
-      // Header del líder
-      docDefinition.content.push({
-        text: `Líder: ${lider.name}`,
-        style: "header",
-        margin: [0, 10, 0, 5],
-      });
-
-      // Tabla de votantes
-      const tableBody = [
-        ["Cédula", "Nombre", "Programa", "Tipo", "Pago", "Digitador", "Fecha"],
-      ];
-
       for (const v of lider.votaciones) {
         const nombreCompleto = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
         const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+        const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
 
-        tableBody.push([
-          v.cedula,
-          nombreCompleto,
-          v.programa?.nombre || "",
-          v.tipo?.nombre || "",
-          pago,
-          v.digitador?.username || "",
-          formatDate(v.createdAt),
-        ]);
+        rows.push({
+          Lider: lider.name,
+          Cedula: v.cedula || "",
+          NombreCompleto: nombreCompleto,
+          Telefono: v.telefono || "",
+          Direccion: v.direccion || "",
+          Barrio: v.barrio || "",
+          PuestoVotacion: puestoNombre || "",
+          Programa: v.programa?.nombre || "",
+          Tipo: v.tipo?.nombre || "",
+          Pago: pago,
+          FechaRegistro: v.createdAt
+            ? new Date(v.createdAt).toLocaleDateString("es-CO")
+            : "",
+        });
       }
-
-      docDefinition.content.push({
-        table: {
-          headerRows: 1,
-          widths: ["auto", "*", "*", "auto", "auto", "auto", "auto"],
-          body: tableBody,
-        },
-        layout: "lightHorizontalLines",
-        margin: [0, 0, 0, 20],
-      });
     }
 
-    docDefinition.styles = {
-      header: { fontSize: 14, bold: true },
-    };
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Votaciones");
 
-    console.log(`🔹 Total votantes procesados: ${totalVotantes}`);
-    console.log("🔹 Generando PDF...");
-
-    // Generar PDF como buffer
-    const pdfDoc = pdfMake.createPdf(docDefinition);
-    pdfDoc.getBuffer((buffer) => {
-      console.log("🔹 PDF generado, enviando respuesta...");
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", "attachment; filename=por_lider.pdf");
-      res.send(Buffer.from(buffer));
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
     });
+
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_votaciones_por_lider.xlsx"
+    );
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.end(buffer);
   } catch (error) {
-    console.error("❌ Error en exportPdfPorLider:", error);
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 export const previewPorLider = async (req, res) => {
