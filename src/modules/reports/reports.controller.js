@@ -1190,31 +1190,56 @@ function generarHtmlReportePorPuesto(puestos) {
   return html;
 }
 
-
 export const exportPdfPorPuesto = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
 
-    // Traemos todos los puestos con sus votaciones
-    const puestos = await prisma.puestoVotacion.findMany({
+    // 🔹 Manejar tamaño de PDF según formato
+    const formato = req.query.formato || "carta";
+    const pdfSize =
+      formato === "oficio"
+        ? { width: "216mm", height: "340mm" }
+        : { format: "A4" };
+
+    // 🔹 Traer todos los puestos
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true }
+    });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    // 🔹 Traer todas las votaciones
+    const votaciones = await prisma.votacion.findMany({
+      where,
       include: {
-        votaciones: {
-          where,
-          include: {
-            leader: { select: { name: true } },
-            tipo: { select: { nombre: true } },
-            programa: { select: { nombre: true } },
-            digitador: { select: { username: true } },
-            recommendedBy: { select: { name: true } },
-          },
-          orderBy: { createdAt: "asc" },
-        },
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
       },
-      orderBy: { puesto: "asc" },
+      orderBy: { createdAt: "asc" },
     });
 
-    const html = generarHtmlReportePorPuesto(puestos);
+    // 🔹 Agrupar por puesto
+    const puestos = {};
+    votaciones.forEach(v => {
+      const id = v.puestoVotacion || "SIN_PUESTO";
+      if (!puestos[id]) {
+        puestos[id] = {
+          id,
+          puesto: puestosMap[id] || "SIN PUESTO",
+          votaciones: [],
+        };
+      }
+      puestos[id].votaciones.push(v);
+    });
 
+    const puestosArray = Object.values(puestos);
+
+    // 🔹 Generar HTML
+    const html = generarHtmlReportePorPuesto(puestosArray);
+
+    // 🔹 Crear PDF con Puppeteer
     const browser = await launchBrowser({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
@@ -1223,7 +1248,7 @@ export const exportPdfPorPuesto = async (req, res) => {
     await page.setContent(html, { waitUntil: "networkidle0" });
 
     const pdf = await page.pdf({
-      format: "A4",
+      ...pdfSize, // <-- aquí se aplica el formato oficio o A4
       landscape: true,
       printBackground: true,
       displayHeaderFooter: true,
@@ -1247,13 +1272,6 @@ export const exportPdfPorPuesto = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
-
-
-
-
-
-
 
 
 
