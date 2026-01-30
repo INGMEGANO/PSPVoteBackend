@@ -71,40 +71,54 @@ export const createVotacion = async (req, res) => {
 
 export const getVotaciones = async (req, res) => {
   try {
-    let where = {}
-console.log("REQ.USER:", req.user);
+    let where = {};
     if (req.user.role === "LIDER") {
       if (!req.user.leaderId) {
-        return res.status(403).json({ error: "Líder sin asignación" })
+        return res.status(403).json({ error: "Líder sin asignación" });
       }
-
       where = {
         OR: [
-          { leaderId: req.user.leaderId },  // lo que es su líder
-          { digitadorId: req.user.userId }      // lo que digitó él
+          { leaderId: req.user.leaderId },
+          { digitadorId: req.user.userId }
         ]
-      }
+      };
     }
 
-    // ADMIN => where queda {}
-    const data = await prisma.votacion.findMany({
+    // 1️⃣ Traemos las votaciones con relaciones existentes
+    const votaciones = await prisma.votacion.findMany({
       where,
-      include: { leader: true, digitador: true },
+      include: {
+        leader: true,
+        digitador: true,
+        recommendedBy: true,
+      },
       orderBy: { createdAt: "asc" }
-    })
+    });
 
-    const result = data.map((item, index) => ({
+    // 2️⃣ Lookup de nombres de puestos
+    const puestoIds = [...new Set(votaciones.map(v => v.puestoVotacion).filter(Boolean))];
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true }
+    });
+    const puestosMap = {};
+    puestosDb.forEach(p => { puestosMap[p.id] = p.puesto; });
+
+    // 3️⃣ Construimos resultado final
+    const result = votaciones.map((item, index) => ({
       idnumber: index + 1,
       id: item.id,
-      ...item
-    }))
+      ...item,
+      // mantenemos el id original
+      puestoVotacionNombre: puestosMap[item.puestoVotacion] || null
+    }));
 
-    res.json(result)
+    res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
-}
-
+};
 
 export const getVotacionById = async (req, res) => {
   const { id } = req.params;
