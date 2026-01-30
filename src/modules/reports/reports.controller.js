@@ -1735,6 +1735,249 @@ export const exportExcelPorPrograma = async (req, res) => {
 };
 
 
+function generarHtmlReporteGeneral(votaciones, puestosMap) {
+  let html = `
+  <html>
+    <head>
+      <style>
+        body { font-family: Arial; font-size: 11px; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 4px; }
+        th { background: #f0f0f0; }
+        .page-break { page-break-before: always; }
+      </style>
+    </head>
+    <body>
+      <h1>Reporte General de Votaciones</h1>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Líder</th>
+            <th>Cédula</th>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Barrio</th>
+            <th>Puesto</th>
+            <th>Programa</th>
+            <th>Tipo</th>
+            <th>Pago</th>
+            <th>Fecha</th>
+            <th>Digitador</th>
+            <th>Recomendado Por</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  votaciones.forEach((v, i) => {
+    const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+    const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+    const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+    html += `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${v.leader?.name || ""}</td>
+        <td>${v.cedula}</td>
+        <td>${nombre}</td>
+        <td>${v.telefono || ""}</td>
+        <td>${v.barrio || ""}</td>
+        <td>${puestoNombre}</td>
+        <td>${v.programa?.nombre || ""}</td>
+        <td>${v.tipo?.nombre || ""}</td>
+        <td>${pago}</td>
+        <td>${new Date(v.createdAt).toLocaleDateString()}</td>
+        <td>${v.digitador?.username || ""}</td>
+        <td>${v.recommendedBy?.name || ""}</td>
+      </tr>
+    `;
+  });
+
+  html += `</tbody></table></body></html>`;
+  return html;
+}
+
+export const exportPdfGeneral = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "carta";
+    const pdfSize = formato === "oficio"
+      ? { width: "216mm", height: "340mm" }
+      : { format: "A4" };
+
+    // 🔹 Traer todas las votaciones
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // 🔹 Traer todos los puestos
+    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
+
+    // 🔹 Crear PDF
+    const browser = await launchBrowser({
+      headless: true,
+      args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdf = await page.pdf({
+      ...pdfSize,
+      landscape: true,
+      printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: `<span></span>`,
+      footerTemplate: `
+        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
+          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+        </div>
+      `,
+      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+    });
+
+    await browser.close();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_general.pdf");
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportZipGeneral = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "carta";
+    const pdfSize = formato === "oficio"
+      ? { width: "216mm", height: "340mm" }
+      : { format: "A4" };
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_general.zip");
+
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    // 📄 Todo en un solo PDF
+    const page = await launchBrowser({
+      headless: true,
+      args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
+    }).then(browser => browser.newPage());
+
+    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdfUint8 = await page.pdf({
+      ...pdfSize,
+      landscape: true,
+      printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: `<span></span>`,
+      footerTemplate: `
+        <div style="width:100%; font-size:9px; text-align:center;">
+          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+        </div>
+      `,
+      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+    });
+
+    archive.append(Buffer.from(pdfUint8), { name: `reporte_general.pdf` });
+
+    await archive.finalize();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportExcelGeneral = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    const rows = votaciones.map(v => {
+      const nombreCompleto = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+      const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+      const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+      return {
+        Lider: v.leader?.name || "",
+        Cedula: v.cedula || "",
+        NombreCompleto: nombreCompleto,
+        Telefono: v.telefono || "",
+        Barrio: v.barrio || "",
+        Puesto: puestoNombre,
+        Programa: v.programa?.nombre || "",
+        Tipo: v.tipo?.nombre || "",
+        Pago: pago,
+        FechaRegistro: v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-CO") : "",
+        Digitador: v.digitador?.username || "",
+        RecomendadoPor: v.recommendedBy?.name || "",
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Votaciones");
+
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_general.xlsx");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.end(buffer);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
 
 
 export const previewPorLider = async (req, res) => {

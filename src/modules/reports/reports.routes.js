@@ -19,6 +19,9 @@ import {
   exportPdfPorPrograma,
   exportZipPorPrograma,
   exportExcelPorPrograma,
+  exportPdfGeneral,
+  exportZipGeneral,
+  exportExcelGeneral,
   previewPorLider
 } from "./reports.controller.js"
 
@@ -47,9 +50,14 @@ router.get("/dashboard/exportpdfporpuesto", exportPdfPorPuesto);
 router.get("/dashboard/exportzippdfporpuesto", exportZipPorPuesto); 
 router.get("/dashboard/exportexcelporpuesto", exportExcelPorPuesto); 
 
-router.get("/dashboard/exportpdfprograma", exportPdfPorPrograma);
-router.get("/dashboard/exportzippdfprograma", exportZipPorPrograma); 
+router.get("/dashboard/exportpdfporprograma", exportPdfPorPrograma);
+router.get("/dashboard/exportzippdfporprograma", exportZipPorPrograma); 
 router.get("/dashboard/exportexcelporprograma", exportExcelPorPrograma); 
+
+router.get("/dashboard/exportpdfgeneral", exportPdfGeneral);
+router.get("/dashboard/exportzippdfgeneral", exportZipGeneral); 
+router.get("/dashboard/exportexcelgeneral", exportExcelGeneral); 
+
 
 router.get("/dashboard/previewpdf", previewPorLider);
 
