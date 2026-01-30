@@ -155,7 +155,7 @@ export const getVotacionByCedula = async (req, res) => {
     });
   }
 
-  // 🔹 Si es LÍDER necesitamos su leaderId
+  // 🔹 LÍDER → necesitamos su leaderId
   let leaderId = null;
   if (role === "LIDER") {
     const userFromDb = await prisma.user.findUnique({
@@ -177,16 +177,21 @@ export const getVotacionByCedula = async (req, res) => {
     orderBy: { createdAt: "asc" }
   });
 
-  if (!votacionPropia) {
-    return res.status(403).json({ error: "No autorizado" });
+  if (votacionPropia) {
+    // ⚡ Si ya la digitó él
+    return res.json({
+      message:
+        role === "DIGITADOR"
+          ? "Ya registraste esta votación"
+          : "Ya registraste esta votación como líder",
+      votacion: votacionPropia
+    });
   }
 
+  // 🔹 Si no la ha digitado nunca → dejarlo pasar
   return res.json({
-    message:
-      role === "DIGITADOR"
-        ? "Ya registraste esta votación"
-        : "Ya registraste esta votación como líder",
-    votacion: votacionPropia
+    message: "Votación disponible para digitar",
+    votacion: null
   });
 };
 
