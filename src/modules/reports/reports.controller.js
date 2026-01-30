@@ -899,7 +899,15 @@ export const exportPdfPorLider = async (req, res) => {
     const html = generarHtmlReporte(lideres, puestosMap);
 
     // 4️⃣ Puppeteer para PDF
-    const browser = await puppeteer.launch({ headless: "new" });
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu"
+      ]
+    });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
 
@@ -974,7 +982,15 @@ export const exportZipPorLider = async (req, res) => {
   const archive = archiver("zip");
   archive.pipe(res);
 
-  const browser = await puppeteer.launch({ headless: "new" });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu"
+    ]
+  });
 
   const BATCH_SIZE = 3;
 
