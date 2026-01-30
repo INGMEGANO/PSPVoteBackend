@@ -1273,6 +1273,468 @@ export const exportPdfPorPuesto = async (req, res) => {
   }
 };
 
+export const exportZipPorPuesto = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "carta";
+    const pdfSize =
+      formato === "oficio"
+        ? { width: "216mm", height: "340mm" }
+        : { format: "A4" };
+
+    // 🔹 Traer todos los puestos
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true }
+    });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    // 🔹 Traer todas las votaciones
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // 🔹 Agrupar votaciones por puesto
+    const puestos = {};
+    votaciones.forEach(v => {
+      const id = v.puestoVotacion || "SIN_PUESTO";
+      if (!puestos[id]) {
+        puestos[id] = {
+          id,
+          puesto: puestosMap[id] || "SIN PUESTO",
+          votaciones: [],
+        };
+      }
+      puestos[id].votaciones.push(v);
+    });
+    const puestosArray = Object.values(puestos);
+
+    // 🔹 Preparar ZIP
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_por_puesto.zip");
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    // 🔹 Abrir Puppeteer
+    const browser = await launchBrowser({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    });
+
+    for (const puesto of puestosArray) {
+      if (!puesto.votaciones.length) continue;
+
+      const page = await browser.newPage();
+      page.setDefaultNavigationTimeout(0);
+      page.setDefaultTimeout(0);
+
+      const html = generarHtmlReportePorPuesto([puesto]);
+      await page.setContent(html);
+
+      const pdfUint8 = await page.pdf({
+        ...pdfSize, // aplica oficio o A4
+        landscape: true,
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: `<span></span>`,
+        footerTemplate: `
+          <div style="width:100%; font-size:9px; text-align:center;">
+            Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+          </div>
+        `,
+        margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+      });
+
+      await page.close();
+
+      archive.append(Buffer.from(pdfUint8), {
+        name: `reporte_puesto_${puesto.puesto.replace(/\s+/g, "_").toLowerCase()}.pdf`,
+      });
+    }
+
+    await browser.close();
+    await archive.finalize();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportExcelPorPuesto = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+
+    // 🔹 Traer todos los puestos
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true }
+    });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    // 🔹 Traer todas las votaciones
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // 🔹 Agrupar por puesto
+    const puestos = {};
+    votaciones.forEach(v => {
+      const id = v.puestoVotacion || "SIN_PUESTO";
+      if (!puestos[id]) {
+        puestos[id] = {
+          id,
+          puesto: puestosMap[id] || "SIN PUESTO",
+          votaciones: [],
+        };
+      }
+      puestos[id].votaciones.push(v);
+    });
+    const puestosArray = Object.values(puestos);
+
+    // 🔹 Preparar filas para Excel
+    const rows = [];
+    puestosArray.forEach(puesto => {
+      puesto.votaciones.forEach(v => {
+        const nombreCompleto = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+        const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+
+        rows.push({
+          Puesto: puesto.puesto,
+          Lider: v.leader?.name || "",
+          Cedula: v.cedula || "",
+          NombreCompleto: nombreCompleto,
+          Telefono: v.telefono || "",
+          Barrio: v.barrio || "",
+          Programa: v.programa?.nombre || "",
+          Tipo: v.tipo?.nombre || "",
+          Pago: pago,
+          FechaRegistro: v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-CO") : "",
+        });
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Votaciones");
+
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_votaciones_por_puesto.xlsx");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.end(buffer);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+function generarHtmlReportePorPrograma(programas, puestosMap) {
+  let html = `
+  <html>
+    <head>
+      <style>
+        body { font-family: Arial; font-size: 11px; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 4px; }
+        th { background: #f0f0f0; }
+        .page-break { page-break-before: always; }
+      </style>
+    </head>
+    <body>
+      <h1>Reporte por Programa</h1>
+  `;
+
+  programas.forEach((programa, index) => {
+    if (!programa.votaciones.length) return;
+    if (index !== 0) html += `<div class="page-break"></div>`;
+
+    html += `
+      <h2>Programa: ${programa.nombre}</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Líder</th>
+            <th>Cédula</th>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Barrio</th>
+            <th>Puesto</th>
+            <th>Tipo</th>
+            <th>Pago</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    programa.votaciones.forEach((v, i) => {
+      const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+      const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+      const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+      html += `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${v.leader?.name || ""}</td>
+          <td>${v.cedula}</td>
+          <td>${nombre}</td>
+          <td>${v.telefono || ""}</td>
+          <td>${v.barrio || ""}</td>
+          <td>${puestoNombre}</td>
+          <td>${v.tipo?.nombre || ""}</td>
+          <td>${pago}</td>
+          <td>${new Date(v.createdAt).toLocaleDateString()}</td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table>`;
+  });
+
+  html += `</body></html>`;
+  return html;
+}
+
+export const exportPdfPorPrograma = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "carta";
+
+    const pdfSize = formato === "oficio"
+      ? { width: "216mm", height: "340mm" }
+      : { format: "A4" };
+
+    // 🔹 Traer todas las votaciones
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // 🔹 Traer todos los puestos y generar map
+    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    // 🔹 Agrupar por programa
+    const programas = {};
+    votaciones.forEach(v => {
+      const nombrePrograma = v.programa?.nombre || "SIN_PROGRAMA";
+      if (!programas[nombrePrograma]) programas[nombrePrograma] = { nombre: nombrePrograma, votaciones: [] };
+      programas[nombrePrograma].votaciones.push(v);
+    });
+    const programasArray = Object.values(programas);
+
+    const html = generarHtmlReportePorPrograma(programasArray, puestosMap);
+
+    // 🔹 Crear PDF
+    const browser = await launchBrowser({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdf = await page.pdf({
+      ...pdfSize,
+      landscape: true,
+      printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: `<span></span>`,
+      footerTemplate: `
+        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
+          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+        </div>
+      `,
+      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+    });
+
+    await browser.close();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_por_programa.pdf");
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportZipPorPrograma = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "carta";
+    const pdfSize = formato === "oficio"
+      ? { width: "216mm", height: "340mm" }
+      : { format: "A4" };
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    // Agrupar por programa
+    const programas = {};
+    votaciones.forEach(v => {
+      const nombrePrograma = v.programa?.nombre || "SIN_PROGRAMA";
+      if (!programas[nombrePrograma]) programas[nombrePrograma] = { nombre: nombrePrograma, votaciones: [] };
+      programas[nombrePrograma].votaciones.push(v);
+    });
+    const programasArray = Object.values(programas);
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_por_programa.zip");
+
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    const browser = await launchBrowser({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    });
+
+    for (const programa of programasArray) {
+      if (!programa.votaciones.length) continue;
+
+      const page = await browser.newPage();
+      page.setDefaultNavigationTimeout(0);
+      page.setDefaultTimeout(0);
+
+      const html = generarHtmlReportePorPrograma([programa], puestosMap);
+      await page.setContent(html);
+
+      const pdfUint8 = await page.pdf({
+        ...pdfSize,
+        landscape: true,
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: `<span></span>`,
+        footerTemplate: `
+          <div style="width:100%; font-size:9px; text-align:center;">
+            Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+          </div>
+        `,
+        margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+      });
+
+      await page.close();
+
+      archive.append(Buffer.from(pdfUint8), {
+        name: `reporte_programa_${programa.nombre.replace(/\s+/g, "_").toLowerCase()}.pdf`,
+      });
+    }
+
+    await browser.close();
+    await archive.finalize();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ==================== EXPORT EXCEL ====================
+export const exportExcelPorPrograma = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // 🔹 Traer todos los puestos
+    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    // Agrupar por programa
+    const programas = {};
+    votaciones.forEach(v => {
+      const nombrePrograma = v.programa?.nombre || "SIN_PROGRAMA";
+      if (!programas[nombrePrograma]) programas[nombrePrograma] = { nombre: nombrePrograma, votaciones: [] };
+      programas[nombrePrograma].votaciones.push(v);
+    });
+    const programasArray = Object.values(programas);
+
+    // Preparar filas
+    const rows = [];
+    programasArray.forEach(programa => {
+      programa.votaciones.forEach(v => {
+        const nombreCompleto = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+        const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+
+        rows.push({
+          Programa: programa.nombre,
+          Lider: v.leader?.name || "",
+          Cedula: v.cedula || "",
+          NombreCompleto: nombreCompleto,
+          Telefono: v.telefono || "",
+          Barrio: v.barrio || "",
+          Puesto: puestosMap[v.puestoVotacion] || "SIN_PUESTO",
+          Tipo: v.tipo?.nombre || "",
+          Pago: pago,
+          FechaRegistro: v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-CO") : "",
+        });
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Votaciones");
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_votaciones_por_programa.xlsx");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.end(buffer);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
 
 
 export const previewPorLider = async (req, res) => {

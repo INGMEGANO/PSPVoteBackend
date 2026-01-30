@@ -14,6 +14,11 @@ import {
   exportZipPorLider,
   exportExcelPorLider,
   exportPdfPorPuesto,
+  exportZipPorPuesto,
+  exportExcelPorPuesto,
+  exportPdfPorPrograma,
+  exportZipPorPrograma,
+  exportExcelPorPrograma,
   previewPorLider
 } from "./reports.controller.js"
 
@@ -35,9 +40,16 @@ router.get("/dashboard/export", exportDashboard);
 router.get("/dashboard/exportxls", exportDashboardXLSX);
 router.get("/dashboard/exportpdf", exportPdfPorLider);
 router.get("/dashboard/exportzippdf", exportZipPorLider);
-router.get("/dashboard/exportexcel", exportExcelPorLider);
+router.get("/dashboard/exportexcel", exportExcelPorLider); 
+router.get("/dashboard/exportzippdf", exportZipPorLider);
 
 router.get("/dashboard/exportpdfporpuesto", exportPdfPorPuesto);
+router.get("/dashboard/exportzippdfporpuesto", exportZipPorPuesto); 
+router.get("/dashboard/exportexcelporpuesto", exportExcelPorPuesto); 
+
+router.get("/dashboard/exportpdfprograma", exportPdfPorPrograma);
+router.get("/dashboard/exportzippdfprograma", exportZipPorPrograma); 
+router.get("/dashboard/exportexcelporprograma", exportExcelPorPrograma); 
 
 router.get("/dashboard/previewpdf", previewPorLider);
 
