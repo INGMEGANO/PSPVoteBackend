@@ -7,14 +7,10 @@ import fs from "fs";
 
 import { createRequire } from "module";
 import path from "path";
-
-import puppeteer from "puppeteer";
 import archiver from "archiver";
 
 
-
-
-
+import { launchBrowser } from "../../utils/puppeteer.js";
 
 
 /**
@@ -899,7 +895,7 @@ export const exportPdfPorLider = async (req, res) => {
     const html = generarHtmlReporte(lideres, puestosMap);
 
     // 4️⃣ Puppeteer para PDF
-    const browser = await puppeteer.launch({
+    const browser = await launchBrowser({
       headless: true,
       args: [
         "--no-sandbox",
@@ -982,7 +978,7 @@ export const exportZipPorLider = async (req, res) => {
   const archive = archiver("zip");
   archive.pipe(res);
 
-  const browser = await puppeteer.launch({
+  const browser = await launchBrowser({
     headless: true,
     args: [
       "--no-sandbox",
