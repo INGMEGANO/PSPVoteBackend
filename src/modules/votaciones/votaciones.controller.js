@@ -140,43 +140,54 @@ export const getVotacionByCedula = async (req, res) => {
   const { cedula } = req.params;
   const { role, userId } = req.user;
 
-  let whereClause = { cedula };
-
-  // 🔹 ADMIN ve cualquiera
+  // 🔹 ADMIN → acceso total al primer registro
   if (role === "ADMIN") {
-    const votacion = await prisma.votacion.findFirst({ where: whereClause });
+    const votacion = await prisma.votacion.findFirst({
+      where: { cedula },
+      orderBy: { createdAt: "asc" }
+    });
 
-    if (!votacion) {
-      return res.status(404).json({ error: "No encontrada" });
-    }
+    if (!votacion) return res.status(404).json({ error: "No encontrada" });
 
-    return res.json(votacion);
+    return res.json({
+      message: "Acceso total (ADMIN)",
+      votacion
+    });
   }
 
-  // 🔹 DIGITADOR → solo las que él creó
-  if (role === "DIGITADOR") {
-    whereClause.digitadorId = userId;
-  }
-
-  // 🔹 LÍDER → solo las de su líder
+  // 🔹 Si es LÍDER necesitamos su leaderId
+  let leaderId = null;
   if (role === "LIDER") {
     const userFromDb = await prisma.user.findUnique({
       where: { id: userId },
       select: { leaderId: true }
     });
-
-    whereClause.leaderId = userFromDb.leaderId;
+    leaderId = userFromDb.leaderId;
   }
 
-  const votacion = await prisma.votacion.findFirst({
-    where: whereClause
+  // 🔹 Buscar cualquier votación donde el usuario haya participado
+  const votacionPropia = await prisma.votacion.findFirst({
+    where: {
+      cedula,
+      OR: [
+        { digitadorId: userId },
+        ...(role === "LIDER" ? [{ leaderId }] : [])
+      ]
+    },
+    orderBy: { createdAt: "asc" }
   });
 
-  if (!votacion) {
-    return res.status(403).json({ error: "No autorizado o no encontrada" });
+  if (!votacionPropia) {
+    return res.status(403).json({ error: "No autorizado" });
   }
 
-  return res.json(votacion);
+  return res.json({
+    message:
+      role === "DIGITADOR"
+        ? "Ya registraste esta votación"
+        : "Ya registraste esta votación como líder",
+    votacion: votacionPropia
+  });
 };
 
 

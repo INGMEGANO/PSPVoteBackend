@@ -13,6 +13,7 @@ import {
   exportPdfPorLider,
   exportZipPorLider,
   exportExcelPorLider,
+  exportPdfPorPuesto,
   previewPorLider
 } from "./reports.controller.js"
 
@@ -35,6 +36,8 @@ router.get("/dashboard/exportxls", exportDashboardXLSX);
 router.get("/dashboard/exportpdf", exportPdfPorLider);
 router.get("/dashboard/exportzippdf", exportZipPorLider);
 router.get("/dashboard/exportexcel", exportExcelPorLider);
+
+router.get("/dashboard/exportpdfporpuesto", exportPdfPorPuesto);
 
 router.get("/dashboard/previewpdf", previewPorLider);
 
