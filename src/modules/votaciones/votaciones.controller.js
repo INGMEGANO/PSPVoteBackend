@@ -136,6 +136,7 @@ export const getVotaciones = async (req, res) => {
       apellido2: item.apellido2,
       telefono: item.telefono,
       barrio: item.barrio,
+      
 
       puestoVotacion: item.puestoVotacion,
       puestoVotacionNombre: puestosMap[item.puestoVotacion] || null,
@@ -143,6 +144,9 @@ export const getVotaciones = async (req, res) => {
       leader: item.leader,
       digitador: item.digitador,
       recommendedBy: item.recommendedBy,
+
+
+      isActive: item.isActive,
 
       // ✅ CONFIRMACIÓN (YA ASOCIADA)
       confirmado: !!item.confirmacion,
