@@ -20,6 +20,7 @@ import analyticsRoutes from "./modules/analytics/analytics.routes.js";
 
 import reportsRoutes from "./modules/reports/reports.routes.js"
 
+import path from 'path';
 
 
 const app = express()
@@ -46,6 +47,8 @@ app.use("/api/votaciones", votacionesRoutes)
 app.use("/api/analytics", analyticsRoutes);
 
 app.use("/api/reports", reportsRoutes)
+
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 
 
