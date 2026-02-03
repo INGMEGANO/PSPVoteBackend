@@ -7,6 +7,9 @@ export default {
     res.status(201).json(puesto);
   },
 
+
+  
+
   async findAll(req, res) {
     const puestos = await service.findAll(req.query);
     res.json(puestos);
