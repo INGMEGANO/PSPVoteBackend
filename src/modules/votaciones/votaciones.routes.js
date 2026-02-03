@@ -1,6 +1,8 @@
 import { Router } from "express"
 import { authMiddleware } from "../../middlewares/auth.middleware.js"
 import { allowRoles } from "../../middlewares/role.middleware.js"
+import { uploadVoto } from "../../utils/upload.js";
+
 import {
   createVotacion,
   createVotacionBulk,
@@ -15,7 +17,8 @@ import {
   getVotacionDuplicates,
   deactivateVotacion,
   reassignVotacion,
-  toggleVotacionStatus
+  toggleVotacionStatus,
+  confirmarVoto
 } from "./votaciones.controller.js"
 
 const router = Router()
@@ -135,5 +138,15 @@ router.delete(
   allowRoles("ADMIN"),
   deleteVotacion
 )
+
+//router.post("/confirmar", authMiddleware, confirmarVoto);
+
+router.post(
+  "/:id/confirmar",
+  authMiddleware,
+  uploadVoto.single("imagen"), // ← aquí se “habilita” la imagen
+  confirmarVoto
+);
+
 
 export default router

@@ -26,7 +26,7 @@ model User {
 
   leaderId String?
   leader   Leader? @relation(fields: [leaderId], references: [id])
-  
+
   votacionesComoDigitador Votacion[] @relation("DigitadorVotaciones")
 
   consultasVotacion VotacionConsulta[]
@@ -34,6 +34,8 @@ model User {
   isActive Boolean @default(true)
 
   votacionStatusLogs VotacionStatusLog[]
+
+  confirmacionesVoto VotacionConfirmacion[] @relation("ConfirmacionesPorUsuario")
 
   createdAt DateTime @default(now())
 }
@@ -76,17 +78,16 @@ model Votacion {
   id String @id @default(uuid())
 
   // Datos del votante
-  nombre1        String
-  nombre2        String?
-  apellido1      String
-  apellido2      String?
-  cedula         String
-  telefono       String?
-  direccion      String?
-  barrio         String?
-  
+  nombre1   String
+  nombre2   String?
+  apellido1 String
+  apellido2 String?
+  cedula    String
+  telefono  String?
+  direccion String?
+  barrio    String?
+
   puestoVotacion String?
-  
 
   // Relación con líder
   leaderId String
@@ -97,10 +98,8 @@ model Votacion {
   recommendedBy   Leader? @relation("RecommendedVotaciones", fields: [recommendedById], references: [id])
 
   // Digitador que ingresa masivamente
-  digitadorId      String?
-  digitador        User?     @relation("DigitadorVotaciones", fields: [digitadorId], references: [id])
-
-
+  digitadorId String?
+  digitador   User?   @relation("DigitadorVotaciones", fields: [digitadorId], references: [id])
 
   // 🔥 CONTROL REAL
   isActive       Boolean    @default(true)
@@ -120,11 +119,13 @@ model Votacion {
 
   esPago Boolean @default(false)
 
-  planilla        Int?
+  planilla Int?
 
   statusLogs VotacionStatusLog[]
 
   consultas VotacionConsulta[]
+
+  confirmacion VotacionConfirmacion?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -133,8 +134,8 @@ model Votacion {
 }
 
 model PuestoVotacion {
-  id           String   @id @default(uuid())
-  codUnic      String   @unique
+  id           String  @id @default(uuid())
+  codUnic      String  @unique
   departamento String
   municipio    String
   puesto       String
@@ -144,13 +145,11 @@ model PuestoVotacion {
   mesas        Int
   comuna       String?
   direccion    String
-  latitud      Decimal  @db.Decimal(10, 7)
-  longitud     Decimal  @db.Decimal(10, 7)
+  latitud      Decimal @db.Decimal(10, 7)
+  longitud     Decimal @db.Decimal(10, 7)
 
-  
-
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Programa {
@@ -194,7 +193,6 @@ model VotacionStatusLog {
   user     User     @relation(fields: [userId], references: [id])
 }
 
-
 model VotacionConsulta {
   id String @id @default(uuid())
 
@@ -207,8 +205,27 @@ model VotacionConsulta {
   consultadoEn DateTime @default(now())
 
   userId String?
-  user   User? @relation(fields: [userId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
 
   @@index([votacionId])
   @@index([estado])
+}
+
+model VotacionConfirmacion {
+  id String @id @default(uuid())
+
+  // Relación 1 a 1
+  votacionId String   @unique
+  votacion   Votacion @relation(fields: [votacionId], references: [id])
+
+  // Datos de confirmación
+  codigoVotacion String
+  imagen         String
+
+  confirmadoPorId String?
+  confirmadoPor   User?   @relation("ConfirmacionesPorUsuario", fields: [confirmadoPorId], references: [id])
+
+  confirmado Boolean @default(true)
+
+  createdAt DateTime @default(now())
 }

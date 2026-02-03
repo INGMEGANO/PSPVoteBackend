@@ -582,3 +582,49 @@ export const updateVotacionBulkByPlanilla = async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 };
+
+export const confirmarVoto = async (req, res) => {
+  const { id } = req.params; // 👈 AQUÍ ESTABA EL PROBLEMA
+  const { codigoVotacion } = req.body;
+  const imagen = req.file?.filename;
+
+  if (!imagen) {
+    return res.status(400).json({
+      ok: false,
+      message: "Debe subir la imagen del voto"
+    });
+  }
+
+  const votacion = await prisma.votacion.findUnique({
+    where: { id },
+    include: { confirmacion: true }
+  });
+
+  if (!votacion) {
+    return res.status(404).json({
+      ok: false,
+      message: "Votación no encontrada"
+    });
+  }
+
+  if (votacion.confirmacion) {
+    return res.status(400).json({
+      ok: false,
+      message: "Esta votación ya fue confirmada"
+    });
+  }
+
+  await prisma.votacionConfirmacion.create({
+    data: {
+      votacionId: id,
+      codigoVotacion,
+      imagen,
+      confirmadoPorId: req.user.id
+    }
+  });
+
+  return res.json({
+    ok: true,
+    message: "Voto confirmado correctamente"
+  });
+};

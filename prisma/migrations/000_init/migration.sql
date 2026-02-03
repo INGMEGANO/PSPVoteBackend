@@ -60,7 +60,7 @@ CREATE TABLE `Votacion` (
     `telefono` VARCHAR(191) NULL,
     `direccion` VARCHAR(191) NULL,
     `barrio` VARCHAR(191) NULL,
-    `puestoVotacionId` VARCHAR(191) NULL,
+    `puestoVotacion` VARCHAR(191) NULL,
     `leaderId` VARCHAR(191) NOT NULL,
     `recommendedById` VARCHAR(191) NULL,
     `digitadorId` VARCHAR(191) NULL,
@@ -158,6 +158,20 @@ CREATE TABLE `VotacionConsulta` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- CreateTable
+CREATE TABLE `VotacionConfirmacion` (
+    `id` VARCHAR(191) NOT NULL,
+    `votacionId` VARCHAR(191) NOT NULL,
+    `codigoVotacion` VARCHAR(191) NOT NULL,
+    `imagen` VARCHAR(191) NOT NULL,
+    `confirmadoPorId` VARCHAR(191) NULL,
+    `confirmado` BOOLEAN NOT NULL DEFAULT true,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    UNIQUE INDEX `VotacionConfirmacion_votacionId_key`(`votacionId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 -- AddForeignKey
 ALTER TABLE `User` ADD CONSTRAINT `User_roleId_fkey` FOREIGN KEY (`roleId`) REFERENCES `Role`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
@@ -166,9 +180,6 @@ ALTER TABLE `User` ADD CONSTRAINT `User_leaderId_fkey` FOREIGN KEY (`leaderId`) 
 
 -- AddForeignKey
 ALTER TABLE `Leader` ADD CONSTRAINT `Leader_recommendedById_fkey` FOREIGN KEY (`recommendedById`) REFERENCES `Leader`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `Votacion` ADD CONSTRAINT `Votacion_puestoVotacionId_fkey` FOREIGN KEY (`puestoVotacionId`) REFERENCES `PuestoVotacion`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `Votacion` ADD CONSTRAINT `Votacion_leaderId_fkey` FOREIGN KEY (`leaderId`) REFERENCES `Leader`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -205,3 +216,10 @@ ALTER TABLE `VotacionConsulta` ADD CONSTRAINT `VotacionConsulta_votacionId_fkey`
 
 -- AddForeignKey
 ALTER TABLE `VotacionConsulta` ADD CONSTRAINT `VotacionConsulta_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `VotacionConfirmacion` ADD CONSTRAINT `VotacionConfirmacion_votacionId_fkey` FOREIGN KEY (`votacionId`) REFERENCES `Votacion`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `VotacionConfirmacion` ADD CONSTRAINT `VotacionConfirmacion_confirmadoPorId_fkey` FOREIGN KEY (`confirmadoPorId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
