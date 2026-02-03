@@ -1,5 +1,8 @@
 import prisma from "../../prisma.js"
 
+
+
+
 // ========================
 // CREAR LÍDER (y asociar usuario opcional)
 // ========================
@@ -52,13 +55,60 @@ export const createLeader = async (req, res) => {
 // ========================
 // LISTAR LÍDERES
 // ========================
+const isValidAddress = (address) => {
+  if (!address) return false
+  const invalids = ["0000000000", "No la tenemos", "no la tenemos"]
+  return !invalids.includes(address.trim())
+}
+
+const getCoordinates = async (address) => {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+      address + ", Colombia"
+    )}`
+
+    const res = await fetch(url, {
+      headers: { "User-Agent": "leaders-app" }
+    })
+
+    const data = await res.json()
+
+    if (!data.length) return null
+
+    return {
+      lat: parseFloat(data[0].lat),
+      lng: parseFloat(data[0].lon)
+    }
+  } catch (err) {
+    return null
+  }
+}
+
 export const getLeaders = async (req, res) => {
   const leaders = await prisma.leader.findMany({
     include: { recommendedBy: true, recommendations: true, users: true },
     orderBy: { createdAt: "desc" }
   })
-  res.json(leaders)
+
+  const leadersWithCoords = await Promise.all(
+    leaders.map(async (leader) => {
+      if (!isValidAddress(leader.address)) {
+        return { ...leader, lat: null, lng: null }
+      }
+
+      const coords = await getCoordinates(leader.address)
+
+      return {
+        ...leader,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null
+      }
+    })
+  )
+
+  res.json(leadersWithCoords)
 }
+
 
 // ========================
 // OBTENER LÍDER POR ID

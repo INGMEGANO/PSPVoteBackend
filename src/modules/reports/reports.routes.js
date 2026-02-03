@@ -22,6 +22,10 @@ import {
   exportPdfGeneral,
   exportZipGeneral,
   exportExcelGeneral,
+  exportPdfCedulas,
+  exportZipCedulas,
+  exportExcelCedulas,
+  exportPdfCedulasDuplicadasAuditoria,
   previewPorLider
 } from "./reports.controller.js"
 
@@ -57,6 +61,12 @@ router.get("/dashboard/exportexcelporprograma", exportExcelPorPrograma);
 router.get("/dashboard/exportpdfgeneral", exportPdfGeneral);
 router.get("/dashboard/exportzippdfgeneral", exportZipGeneral); 
 router.get("/dashboard/exportexcelgeneral", exportExcelGeneral); 
+
+router.get("/dashboard/exportpdfcedulas", exportPdfCedulas);
+router.get("/dashboard/exportzippdfcedulas", exportZipCedulas); 
+router.get("/dashboard/exportexcelcedulas", exportExcelCedulas); 
+
+router.get("/dashboard/exportpdfcedulasduplicadas", exportPdfCedulasDuplicadasAuditoria);
 
 
 router.get("/dashboard/previewpdf", previewPorLider);

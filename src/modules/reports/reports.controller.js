@@ -1978,6 +1978,413 @@ export const exportExcelGeneral = async (req, res) => {
 };
 
 
+function generarHtmlReporteCedulas(votaciones, puestosMap, modo = "cedulas") {
+  let columnas = [];
+  let filas = "";
+
+  if (modo === "cedulas") {
+    columnas = ["#", "Cédula"];
+  } else if (modo === "cedulas_nombre") {
+    columnas = ["#", "Cédula", "Nombre"];
+  } else if (modo === "cedulas_puesto") {
+    columnas = ["#", "Cédula", "Puesto"];
+  } else {
+    columnas = ["#", "Cédula", "Nombre", "Puesto", "Programa", "Tipo"];
+  }
+
+  votaciones.forEach((v, i) => {
+    const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+    const puesto = puestosMap[v.puestoVotacion] || "";
+
+    filas += `<tr><td>${i + 1}</td><td>${v.cedula}</td>`;
+
+    if (modo === "cedulas_nombre" || modo === "general") filas += `<td>${nombre}</td>`;
+    if (modo === "cedulas_puesto" || modo === "general") filas += `<td>${puesto}</td>`;
+    if (modo === "general") {
+      filas += `<td>${v.programa?.nombre || ""}</td>`;
+      filas += `<td>${v.tipo?.nombre || ""}</td>`;
+    }
+
+    filas += `</tr>`;
+  });
+
+  return `
+  <html>
+    <head>
+      <style>
+        body { font-family: Arial; font-size: 11px; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 4px; }
+        th { background: #f0f0f0; }
+      </style>
+    </head>
+    <body>
+      <h1>Reporte de Cédulas</h1>
+      <table>
+        <thead>
+          <tr>${columnas.map(c => `<th>${c}</th>`).join("")}</tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </body>
+  </html>`;
+}
+
+export const exportPdfCedulas = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const modo = req.query.modo || "cedulas";
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      select: {
+        cedula: true,
+        nombre1: true,
+        nombre2: true,
+        apellido1: true,
+        apellido2: true,
+        puestoVotacion: true,
+        programa: { select: { nombre: true } },
+        tipo: { select: { nombre: true } },
+      },
+      orderBy: { cedula: "asc" },
+    });
+
+    const puestos = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true },
+    });
+    const puestosMap = Object.fromEntries(puestos.map(p => [p.id, p.puesto]));
+
+    const html = generarHtmlReporteCedulas(votaciones, puestosMap, modo);
+
+    const browser = await launchBrowser({ headless: true, args: ["--no-sandbox"] });
+    const page = await browser.newPage();
+    await page.setContent(html);
+
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "15mm", bottom: "15mm", left: "15mm", right: "15mm" },
+    });
+
+    await browser.close();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=cedulas_${modo}.pdf`
+    );
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportZipCedulas = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const modo = req.query.modo || "cedulas";
+
+    // 🔹 Traer votaciones
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      select: {
+        cedula: true,
+        nombre1: true,
+        nombre2: true,
+        apellido1: true,
+        apellido2: true,
+        puestoVotacion: true,
+        programa: { select: { nombre: true } },
+        tipo: { select: { nombre: true } },
+      },
+      orderBy: { cedula: "asc" },
+    });
+
+    // 🔹 Mapear puestos
+    const puestos = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true },
+    });
+    const puestosMap = Object.fromEntries(puestos.map(p => [p.id, p.puesto]));
+
+    // 🔹 Generar HTML
+    const html = generarHtmlReporteCedulas(votaciones, puestosMap, modo);
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=cedulas_${modo}.zip`
+    );
+
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    // 🔹 Crear PDF
+    const browser = await launchBrowser({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdfUint8 = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "15mm", bottom: "15mm", left: "15mm", right: "15mm" },
+    });
+
+    await page.close();
+    await browser.close();
+
+    // 🔹 Agregar PDF al ZIP
+    archive.append(Buffer.from(pdfUint8), {
+      name: `cedulas_${modo}.pdf`,
+    });
+
+    await archive.finalize();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportExcelCedulas = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const modo = req.query.modo || "cedulas";
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        programa: { select: { nombre: true } },
+        tipo: { select: { nombre: true } },
+      },
+      orderBy: { cedula: "asc" },
+    });
+
+    const puestos = await prisma.puestoVotacion.findMany();
+    const puestosMap = Object.fromEntries(puestos.map(p => [p.id, p.puesto]));
+
+    const rows = votaciones.map(v => {
+      const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+      const puesto = puestosMap[v.puestoVotacion] || "";
+
+      if (modo === "cedulas") return { Cedula: v.cedula };
+      if (modo === "cedulas_nombre") return { Cedula: v.cedula, Nombre: nombre };
+      if (modo === "cedulas_puesto") return { Cedula: v.cedula, Puesto: puesto };
+
+      return {
+        Cedula: v.cedula,
+        Nombre: nombre,
+        Puesto: puesto,
+        Programa: v.programa?.nombre || "",
+        Tipo: v.tipo?.nombre || "",
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Cedulas");
+
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Disposition", `attachment; filename=cedulas_${modo}.xlsx`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.end(buffer);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const where = {};
+const votaciones = await prisma.votacion.findMany({
+  where,
+  select: {
+    cedula: true,
+    nombre1: true,
+    nombre2: true,
+    apellido1: true,
+    apellido2: true,
+    createdAt: true,
+    leader: { select: { name: true } },
+  },
+  orderBy: { createdAt: "asc" }, // 👈 IMPORTANTE
+});
+
+const duplicadasMap = {};
+
+votaciones.forEach(v => {
+  if (!v.cedula) return;
+
+  if (!duplicadasMap[v.cedula]) {
+    duplicadasMap[v.cedula] = {
+      cedula: v.cedula,
+      nombre: `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim(),
+      registros: [],
+    };
+  }
+
+  duplicadasMap[v.cedula].registros.push({
+    lider: v.leader?.name || "SIN_LÍDER",
+    fecha: v.createdAt,
+  });
+});
+
+// 🔹 Solo las realmente duplicadas
+const duplicadas = Object.values(duplicadasMap)
+  .filter(d => d.registros.length > 1)
+  .map(d => {
+    const [primero, ...duplicados] = d.registros;
+
+    return {
+      cedula: d.cedula,
+      nombre: d.nombre,
+      primerLider: primero.lider,
+      fechaPrimerRegistro: primero.fecha,
+      duplicados: duplicados.map(r => ({
+        lider: r.lider,
+        fecha: r.fecha,
+      })),
+    };
+  });
+
+  function generarHtmlCedulasDuplicadasAuditoria(duplicadas) {
+  let html = `
+  <html>
+    <head>
+      <style>
+        body { font-family: Arial; font-size: 11px; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 4px; vertical-align: top; }
+        th { background: #f0f0f0; }
+      </style>
+    </head>
+    <body>
+      <h1>Cédulas Duplicadas – Auditoría</h1>
+      <table>
+        <thead>
+          <tr>
+            <th>Cédula</th>
+            <th>Nombre</th>
+            <th>Registrada primero</th>
+            <th>Duplicada por</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  duplicadas.forEach(d => {
+    html += `
+      <tr>
+        <td>${d.cedula}</td>
+        <td>${d.nombre}</td>
+        <td>
+          <strong>${d.primerLider}</strong><br>
+          ${new Date(d.fechaPrimerRegistro).toLocaleString("es-CO")}
+        </td>
+        <td>
+          ${d.duplicados.map(x =>
+            `<div>
+              ${x.lider}<br>
+              ${new Date(x.fecha).toLocaleString("es-CO")}
+            </div>`
+          ).join("<hr>")}
+        </td>
+      </tr>
+    `;
+  });
+
+  html += `</tbody></table></body></html>`;
+  return html;
+}
+
+export const exportPdfCedulasDuplicadasAuditoria = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      select: {
+        cedula: true,
+        nombre1: true,
+        nombre2: true,
+        apellido1: true,
+        apellido2: true,
+        createdAt: true,
+        leader: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const duplicadasMap = {};
+
+    votaciones.forEach(v => {
+      if (!v.cedula) return;
+
+      if (!duplicadasMap[v.cedula]) {
+        duplicadasMap[v.cedula] = {
+          cedula: v.cedula,
+          nombre: `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim(),
+          registros: [],
+        };
+      }
+
+      duplicadasMap[v.cedula].registros.push({
+        lider: v.leader?.name || "SIN_LÍDER",
+        fecha: v.createdAt,
+      });
+    });
+
+    const duplicadas = Object.values(duplicadasMap)
+      .filter(d => d.registros.length > 1)
+      .map(d => {
+        const [primero, ...duplicados] = d.registros;
+        return {
+          cedula: d.cedula,
+          nombre: d.nombre,
+          primerLider: primero.lider,
+          fechaPrimerRegistro: primero.fecha,
+          duplicados,
+        };
+      });
+
+    const html = generarHtmlCedulasDuplicadasAuditoria(duplicadas);
+
+    const browser = await launchBrowser({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "15mm", bottom: "15mm", left: "15mm", right: "15mm" },
+    });
+
+    await browser.close();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=cedulas_duplicadas_auditoria.pdf"
+    );
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 
 
 export const previewPorLider = async (req, res) => {
