@@ -147,6 +147,8 @@ export const getVotaciones = async (req, res) => {
 
 
       isActive: item.isActive,
+      isDuplicate: item.isDuplicate,
+      duplicatedFrom: item.duplicatedFrom,
 
       // ✅ CONFIRMACIÓN (YA ASOCIADA)
       confirmado: !!item.confirmacion,
