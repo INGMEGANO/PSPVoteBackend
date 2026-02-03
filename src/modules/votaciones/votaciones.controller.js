@@ -644,58 +644,92 @@ export const confirmarVoto = async (req, res) => {
   const { codigoVotacion } = req.body;
   const imagen = req.file?.filename;
 
-  // 🔎 1️⃣ Verificar si ya está confirmado
-  const yaConfirmado = await prisma.votacionConfirmacion.findUnique({
-    where: { votacionId: id }
-  });
+  try {
+    // 🔎 1️⃣ Verificar si la votación ya fue confirmada
+    const yaConfirmado = await prisma.votacionConfirmacion.findFirst({
+      where: { votacionId: id }
+    });
 
-  if (yaConfirmado) {
-    // 🧹 BORRAR imagen subida
+    if (yaConfirmado) {
+      if (imagen) {
+        try {
+          fs.unlinkSync(path.join("uploads/votos", imagen));
+        } catch (e) {}
+      }
+
+      return res.status(400).json({
+        ok: false,
+        message: "Esta votación ya fue confirmada"
+      });
+    }
+
+    // 📷 2️⃣ Validar imagen
+    if (!imagen) {
+      return res.status(400).json({
+        ok: false,
+        message: "Debe subir la imagen del voto"
+      });
+    }
+
+    // 🔍 3️⃣ Verificar que la votación exista
+    const votacion = await prisma.votacion.findUnique({
+      where: { id }
+    });
+
+    if (!votacion) {
+      try {
+        fs.unlinkSync(path.join("uploads/votos", imagen));
+      } catch (e) {}
+
+      return res.status(404).json({
+        ok: false,
+        message: "Votación no encontrada"
+      });
+    }
+
+    // 🔐 4️⃣ Verificar que el código de votación NO esté repetido
+    const codigoYaUsado = await prisma.votacionConfirmacion.findFirst({
+      where: { codigoVotacion }
+    });
+
+    if (codigoYaUsado) {
+      try {
+        fs.unlinkSync(path.join("uploads/votos", imagen));
+      } catch (e) {}
+
+      return res.status(400).json({
+        ok: false,
+        message: "Este código de votación ya fue utilizado"
+      });
+    }
+
+    // ✅ 5️⃣ Crear confirmación
+    await prisma.votacionConfirmacion.create({
+      data: {
+        votacionId: id,
+        codigoVotacion,
+        imagen,
+        confirmadoPorId: req.user.userId
+      }
+    });
+
+    return res.json({
+      ok: true,
+      message: "Voto confirmado correctamente"
+    });
+
+  } catch (error) {
+    console.error(error);
+
     if (imagen) {
-      fs.unlinkSync(path.join("uploads/votos", imagen));
+      try {
+        fs.unlinkSync(path.join("uploads/votos", imagen));
+      } catch (e) {}
     }
 
-    return res.status(400).json({
+    return res.status(500).json({
       ok: false,
-      message: "Esta votación ya fue confirmada"
+      message: "Error interno del servidor"
     });
   }
-
-  // 📷 2️⃣ Validar imagen
-  if (!imagen) {
-    return res.status(400).json({
-      ok: false,
-      message: "Debe subir la imagen del voto"
-    });
-  }
-
-  // 🔍 3️⃣ Verificar votación
-  const votacion = await prisma.votacion.findUnique({
-    where: { id }
-  });
-
-  if (!votacion) {
-    fs.unlinkSync(path.join("uploads/votos", imagen));
-
-    return res.status(404).json({
-      ok: false,
-      message: "Votación no encontrada"
-    });
-  }
-
-  // ✅ 4️⃣ Crear confirmación
-  await prisma.votacionConfirmacion.create({
-    data: {
-      votacionId: id,
-      codigoVotacion,
-      imagen,
-      confirmadoPorId: req.user.userId
-    }
-  });
-
-  return res.json({
-    ok: true,
-    message: "Voto confirmado correctamente"
-  });
 };
-
