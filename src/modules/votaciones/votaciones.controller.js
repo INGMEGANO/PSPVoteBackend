@@ -1,4 +1,6 @@
 import prisma from "../../prisma.js"
+import fs from "fs";
+import path from "path";
 
 /**
  * CREAR VOTACIÓN
@@ -72,10 +74,12 @@ export const createVotacion = async (req, res) => {
 export const getVotaciones = async (req, res) => {
   try {
     let where = {};
+
     if (req.user.role === "LIDER") {
       if (!req.user.leaderId) {
         return res.status(403).json({ error: "Líder sin asignación" });
       }
+
       where = {
         OR: [
           { leaderId: req.user.leaderId },
@@ -84,41 +88,87 @@ export const getVotaciones = async (req, res) => {
       };
     }
 
-    // 1️⃣ Traemos las votaciones con relaciones existentes
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
         leader: true,
         digitador: true,
         recommendedBy: true,
+
+        // 🔥 SOLO ESTO
+        confirmacion: {
+          include: {
+            confirmadoPor: {
+              select: {
+                id: true,
+                username: true
+              }
+            }
+          }
+        }
       },
       orderBy: { createdAt: "asc" }
     });
 
-    // 2️⃣ Lookup de nombres de puestos
-    const puestoIds = [...new Set(votaciones.map(v => v.puestoVotacion).filter(Boolean))];
+    const puestoIds = [...new Set(
+      votaciones.map(v => v.puestoVotacion).filter(Boolean)
+    )];
+
     const puestosDb = await prisma.puestoVotacion.findMany({
       where: { id: { in: puestoIds } },
       select: { id: true, puesto: true }
     });
-    const puestosMap = {};
-    puestosDb.forEach(p => { puestosMap[p.id] = p.puesto; });
 
-    // 3️⃣ Construimos resultado final
+    const puestosMap = {};
+    puestosDb.forEach(p => {
+      puestosMap[p.id] = p.puesto;
+    });
+
     const result = votaciones.map((item, index) => ({
       idnumber: index + 1,
+
+      // 🔹 Datos base
       id: item.id,
-      ...item,
-      // mantenemos el id original
-      puestoVotacionNombre: puestosMap[item.puestoVotacion] || null
+      cedula: item.cedula,
+      nombre1: item.nombre1,
+      nombre2: item.nombre2,
+      apellido1: item.apellido1,
+      apellido2: item.apellido2,
+      telefono: item.telefono,
+      barrio: item.barrio,
+
+      puestoVotacion: item.puestoVotacion,
+      puestoVotacionNombre: puestosMap[item.puestoVotacion] || null,
+
+      leader: item.leader,
+      digitador: item.digitador,
+      recommendedBy: item.recommendedBy,
+
+      // ✅ CONFIRMACIÓN (YA ASOCIADA)
+      confirmado: !!item.confirmacion,
+      codigoVotacion: item.confirmacion?.codigoVotacion || null,
+      imagenConfirmacion: item.confirmacion
+      ? `/uploads/votos/${item.confirmacion.imagen}`
+      : null,
+      fechaConfirmacion: item.confirmacion?.createdAt || null,
+          confirmadoPor: item.confirmacion?.confirmadoPor
+      ? {
+          id: item.confirmacion.confirmadoPor.id,
+          nombre: item.confirmacion.confirmadoPor.username
+        }
+      : null,
+
+      createdAt: item.createdAt
     }));
 
     res.json(result);
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 export const getVotacionById = async (req, res) => {
   const { id } = req.params;
@@ -584,10 +634,28 @@ export const updateVotacionBulkByPlanilla = async (req, res) => {
 };
 
 export const confirmarVoto = async (req, res) => {
-  const { id } = req.params; // 👈 AQUÍ ESTABA EL PROBLEMA
+  const { id } = req.params;
   const { codigoVotacion } = req.body;
   const imagen = req.file?.filename;
 
+  // 🔎 1️⃣ Verificar si ya está confirmado
+  const yaConfirmado = await prisma.votacionConfirmacion.findUnique({
+    where: { votacionId: id }
+  });
+
+  if (yaConfirmado) {
+    // 🧹 BORRAR imagen subida
+    if (imagen) {
+      fs.unlinkSync(path.join("uploads/votos", imagen));
+    }
+
+    return res.status(400).json({
+      ok: false,
+      message: "Esta votación ya fue confirmada"
+    });
+  }
+
+  // 📷 2️⃣ Validar imagen
   if (!imagen) {
     return res.status(400).json({
       ok: false,
@@ -595,31 +663,27 @@ export const confirmarVoto = async (req, res) => {
     });
   }
 
+  // 🔍 3️⃣ Verificar votación
   const votacion = await prisma.votacion.findUnique({
-    where: { id },
-    include: { confirmacion: true }
+    where: { id }
   });
 
   if (!votacion) {
+    fs.unlinkSync(path.join("uploads/votos", imagen));
+
     return res.status(404).json({
       ok: false,
       message: "Votación no encontrada"
     });
   }
 
-  if (votacion.confirmacion) {
-    return res.status(400).json({
-      ok: false,
-      message: "Esta votación ya fue confirmada"
-    });
-  }
-
+  // ✅ 4️⃣ Crear confirmación
   await prisma.votacionConfirmacion.create({
     data: {
       votacionId: id,
       codigoVotacion,
       imagen,
-      confirmadoPorId: req.user.id
+      confirmadoPorId: req.user.userId
     }
   });
 
@@ -628,3 +692,4 @@ export const confirmarVoto = async (req, res) => {
     message: "Voto confirmado correctamente"
   });
 };
+
