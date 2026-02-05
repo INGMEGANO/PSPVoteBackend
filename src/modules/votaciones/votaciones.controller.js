@@ -136,12 +136,13 @@ export const getVotaciones = async (req, res) => {
       apellido1: item.apellido1,
       apellido2: item.apellido2,
       telefono: item.telefono,
+      direccion: item.direccion,
       barrio: item.barrio,
       
 
       puestoVotacion: item.puestoVotacion,
       puestoVotacionNombre: puestosMap[item.puestoVotacion] || null,
-
+      mesa: item.mesa,
       leader: item.leader,
       digitador: item.digitador,
       recommendedBy: item.recommendedBy,
