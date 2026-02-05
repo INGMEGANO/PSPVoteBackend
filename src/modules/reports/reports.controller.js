@@ -2387,6 +2387,271 @@ export const exportPdfCedulasDuplicadasAuditoria = async (req, res) => {
 
 
 
+
+function buildWhereConfirmados(req) {
+  const baseWhere = buildWhereByRole(req.user);
+
+  return {
+    ...baseWhere,
+    confirmacion: {
+      isNot: null
+    }
+  };
+}
+
+const pdfSizeOficio = {
+  width: "216mm",
+  height: "340mm"
+};
+
+function generarHtmlReporteConfirmados(votaciones, puestosMap) {
+  const BASE_URL = process.env.APP_URL || "http://localhost:3000";
+
+  let html = `
+  <style>
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; page-break-after: auto; }
+    thead { display: table-header-group; }
+    img { max-width: 80px; }
+  </style>
+
+  <html>
+    <head>
+      <style>
+        body { font-family: Arial; font-size: 10px; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+        th { background: #f0f0f0; }
+        img { width: 80px; height: auto; }
+      </style>
+    </head>
+    <body>
+      <h2>Reporte de Votaciones Confirmadas</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Cédula</th>
+            <th>Nombre</th>
+            <th>Puesto</th>
+            <th>Código</th>
+            <th>Imagen</th>
+            <th>Fecha Confirmación</th>
+            <th>Confirmado Por</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  votaciones.forEach((v, i) => {
+    const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+    const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+    const imagenUrl = v.confirmacion?.imagen
+      ? `${BASE_URL}/uploads/votos/${v.confirmacion.imagen}`
+      : "";
+
+    html += `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${v.cedula}</td>
+        <td>${nombre}</td>
+        <td>${puestoNombre}</td>
+        <td>${v.confirmacion.codigoVotacion}</td>
+        <td>
+          ${imagenUrl ? `<img src="${imagenUrl}" />` : "SIN IMAGEN"}
+        </td>
+        <td>${new Date(v.confirmacion.createdAt).toLocaleString("es-CO")}</td>
+        <td>${v.confirmacion.confirmadoPor?.username || ""}</td>
+      </tr>
+    `;
+  });
+
+  html += `
+        </tbody>
+      </table>
+    </body>
+  </html>
+  `;
+
+  return html;
+}
+
+export const exportPdfConfirmados = async (req, res) => {
+  try {
+    const where = buildWhereConfirmados(req);
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        digitador: { select: { username: true } },
+        confirmacion: {
+          include: {
+            confirmadoPor: { select: { username: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true }
+    });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    const html = generarHtmlReporteConfirmados(votaciones, puestosMap);
+
+    const browser = await launchBrowser({ headless: true });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdf = await page.pdf({
+      ...pdfSizeOficio,
+      landscape: true,
+      printBackground: true,
+      displayHeaderFooter: true,
+      footerTemplate: `
+        <div style="width:100%; font-size:9px; text-align:center;">
+          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+        </div>
+      `,
+      margin: {
+        top: "15mm",
+        bottom: "20mm",
+        left: "10mm",
+        right: "10mm"
+      }
+    });
+    await browser.close();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=votaciones_confirmadas.pdf");
+    res.end(pdf);
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportZipConfirmados = async (req, res) => {
+  const where = buildWhereConfirmados(req);
+
+  const votaciones = await prisma.votacion.findMany({
+    where,
+    include: {
+      leader: { select: { name: true } },
+      digitador: { select: { username: true } },
+      confirmacion: {
+        include: {
+          confirmadoPor: { select: { username: true } }
+        }
+      }
+    }
+  });
+
+  const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
+  const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+  const html = generarHtmlReporteConfirmados(votaciones, puestosMap);
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", "attachment; filename=reportes_confirmados.zip");
+
+  const archive = archiver("zip");
+  archive.pipe(res);
+
+  const browser = await launchBrowser({ headless: true });
+  const page = await browser.newPage();
+  await page.setContent(html, { waitUntil: "networkidle0" });
+
+  const pdf = await page.pdf({
+    ...pdfSizeOficio,
+    landscape: true,
+    printBackground: true,
+    displayHeaderFooter: true,
+    footerTemplate: `
+      <div style="width:100%; font-size:9px; text-align:center;">
+        Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+      </div>
+    `,
+    margin: {
+      top: "15mm",
+      bottom: "20mm",
+      left: "10mm",
+      right: "10mm"
+    }
+  });
+
+  for (const v of votaciones) {
+    if (v.confirmacion?.imagen) {
+      const imagePath = path.join(
+        process.cwd(),
+        "uploads",
+        "votos",
+        v.confirmacion.imagen
+      );
+
+      if (fs.existsSync(imagePath)) {
+        archive.file(imagePath, {
+          name: `imagenes/${v.confirmacion.imagen}`
+        });
+      }
+    }
+  }
+
+  await browser.close();
+
+  archive.append(Buffer.from(pdf), { name: "votaciones_confirmadas.pdf" });
+
+  await archive.finalize();
+};
+
+
+export const exportExcelConfirmados = async (req, res) => {
+  const where = buildWhereConfirmados(req);
+
+  const votaciones = await prisma.votacion.findMany({
+    where,
+    include: {
+      leader: { select: { name: true } },
+      digitador: { select: { username: true } },
+      confirmacion: {
+        include: {
+          confirmadoPor: { select: { username: true } }
+        }
+      }
+    }
+  });
+
+  const rows = votaciones.map(v => ({
+    Cedula: v.cedula,
+    Nombre: `${v.nombre1} ${v.apellido1}`,
+    Lider: v.leader?.name || "",
+    Digitador: v.digitador?.username || "",
+    CodigoVotacion: v.confirmacion.codigoVotacion,
+    FechaConfirmacion: new Date(v.confirmacion.createdAt).toLocaleString("es-CO"),
+    Imagen: v.confirmacion.imagen
+      ? `${process.env.APP_URL}/uploads/votos/${v.confirmacion.imagen}`
+      : ""
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Confirmados");
+
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader("Content-Disposition", "attachment; filename=votaciones_confirmadas.xlsx");
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.end(buffer);
+};
+
+
+
+
+
+
 export const previewPorLider = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);

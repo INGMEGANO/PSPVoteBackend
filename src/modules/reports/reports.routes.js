@@ -26,6 +26,9 @@ import {
   exportZipCedulas,
   exportExcelCedulas,
   exportPdfCedulasDuplicadasAuditoria,
+  exportPdfConfirmados,
+  exportZipConfirmados,
+  exportExcelConfirmados,
   previewPorLider
 } from "./reports.controller.js"
 
@@ -67,6 +70,13 @@ router.get("/dashboard/exportzippdfcedulas", exportZipCedulas);
 router.get("/dashboard/exportexcelcedulas", exportExcelCedulas); 
 
 router.get("/dashboard/exportpdfcedulasduplicadas", exportPdfCedulasDuplicadasAuditoria);
+
+
+ 
+
+router.get("/dashboard/exportpdfconfirmados", exportPdfConfirmados);
+router.get("/dashboard/exportzipconfirmados", exportZipConfirmados);
+router.get("/dashboard/exportexcelconfirmados", exportExcelConfirmados);
 
 
 router.get("/dashboard/previewpdf", previewPorLider);
