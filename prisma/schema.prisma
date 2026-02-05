@@ -127,6 +127,8 @@ model Votacion {
 
   confirmacion VotacionConfirmacion?
 
+  mesa String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
