@@ -532,7 +532,8 @@ export const createVotacionBulk = async (req, res) => {
         programaId,
         sedeId,
         tipoId,
-        esPago
+        esPago,
+        mesa
       } = item;
 
       if (!leaderId) {
@@ -566,6 +567,7 @@ export const createVotacionBulk = async (req, res) => {
           sedeId: sedeId || null,
           tipoId: tipoId || null,
           esPago: esPago ?? null,
+          mesa: mesa || null,
 
           // 👇 NUEVO
           planilla,

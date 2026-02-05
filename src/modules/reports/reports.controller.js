@@ -742,7 +742,7 @@ function generarHtmlReporte(lideres, puestosMap) {
             <th>Puesto de votación</th>
             <th>Programa</th>
             <th>Tipo</th>
-            <th>Pago</th>
+            
             <th>Fecha</th>
           </tr>
         </thead>
@@ -767,7 +767,7 @@ function generarHtmlReporte(lideres, puestosMap) {
             <td>${puestoNombre}</td>
             <td>${v.programa?.nombre || ""}</td>
             <td>${v.tipo?.nombre || ""}</td>
-            <td>${esPago}</td>
+            
             <td>${new Date(v.createdAt).toLocaleDateString()}</td>
           </tr>
         `;
@@ -785,6 +785,19 @@ function generarHtmlReporte(lideres, puestosMap) {
 
 function generarHtmlReportePorLider(lider, puestosMap) {
   let html = `
+  <style>
+    body { font-family: Arial; font-size: 11px; margin: 20px; }
+    h2 { margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 4px; }
+    th { background: #f0f0f0; }
+
+    /* 🔴 DUPLICADO */
+    .duplicado {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+  </style>
   <html>
     <head>
       <style>
@@ -812,7 +825,7 @@ function generarHtmlReportePorLider(lider, puestosMap) {
             <th>Puesto</th>
             <th>Programa</th>
             <th>Tipo</th>
-            <th>Pago</th>
+            
             <th>Fecha</th>
           </tr>
         </thead>
@@ -823,9 +836,10 @@ function generarHtmlReportePorLider(lider, puestosMap) {
     const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
     const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
     const puesto = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+    const claseFila = v.isDuplicate === 1 ? "duplicado" : "";
 
     html += `
-      <tr>
+      <tr class="${claseFila}">
         <td>${i + 1}</td>
         <td>${v.cedula}</td>
         <td>${nombre}</td>
@@ -835,7 +849,7 @@ function generarHtmlReportePorLider(lider, puestosMap) {
         <td>${puesto}</td>
         <td>${v.programa?.nombre || ""}</td>
         <td>${v.tipo?.nombre || ""}</td>
-        <td>${pago}</td>
+        
         <td>${new Date(v.createdAt).toLocaleDateString()}</td>
       </tr>
     `;
@@ -1156,7 +1170,7 @@ function generarHtmlReportePorPuesto(puestos) {
             <th>Barrio</th>
             <th>Programa</th>
             <th>Tipo</th>
-            <th>Pago</th>
+            
             <th>Fecha</th>
           </tr>
         </thead>
@@ -1177,7 +1191,7 @@ function generarHtmlReportePorPuesto(puestos) {
           <td>${v.barrio || ""}</td>
           <td>${v.programa?.nombre || ""}</td>
           <td>${v.tipo?.nombre || ""}</td>
-          <td>${pago}</td>
+          
           <td>${new Date(v.createdAt).toLocaleDateString()}</td>
         </tr>
       `;
@@ -1478,7 +1492,7 @@ function generarHtmlReportePorPrograma(programas, puestosMap) {
             <th>Barrio</th>
             <th>Puesto</th>
             <th>Tipo</th>
-            <th>Pago</th>
+            
             <th>Fecha</th>
           </tr>
         </thead>
@@ -1500,7 +1514,7 @@ function generarHtmlReportePorPrograma(programas, puestosMap) {
           <td>${v.barrio || ""}</td>
           <td>${puestoNombre}</td>
           <td>${v.tipo?.nombre || ""}</td>
-          <td>${pago}</td>
+          
           <td>${new Date(v.createdAt).toLocaleDateString()}</td>
         </tr>
       `;
@@ -1761,7 +1775,7 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
             <th>Puesto</th>
             <th>Programa</th>
             <th>Tipo</th>
-            <th>Pago</th>
+            
             <th>Fecha</th>
             <th>Digitador</th>
             <th>Recomendado Por</th>
@@ -1786,7 +1800,7 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
         <td>${puestoNombre}</td>
         <td>${v.programa?.nombre || ""}</td>
         <td>${v.tipo?.nombre || ""}</td>
-        <td>${pago}</td>
+        
         <td>${new Date(v.createdAt).toLocaleDateString()}</td>
         <td>${v.digitador?.username || ""}</td>
         <td>${v.recommendedBy?.name || ""}</td>
