@@ -836,7 +836,8 @@ function generarHtmlReportePorLider(lider, puestosMap) {
     const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
     const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
     const puesto = puestosMap[v.puestoVotacion] || "SIN PUESTO";
-    const claseFila = v.isDuplicate === 1 ? "duplicado" : "";
+    const claseFila = v.isDuplicate ? "duplicado" : "";
+
 
     html += `
       <tr class="${claseFila}">
@@ -1147,6 +1148,10 @@ function generarHtmlReportePorPuesto(puestos) {
         th, td { border: 1px solid #ccc; padding: 4px; }
         th { background: #f0f0f0; }
         .page-break { page-break-before: always; }
+        .duplicado {
+          background-color: #f8d7da;
+          color: #721c24;
+        }
       </style>
     </head>
     <body>
@@ -1181,8 +1186,10 @@ function generarHtmlReportePorPuesto(puestos) {
       const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
       const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
 
+      const claseFila = v.isDuplicate ? "duplicado" : "";
+
       html += `
-        <tr>
+        <tr class="${claseFila}">
           <td>${i + 1}</td>
           <td>${v.leader?.name || ""}</td>
           <td>${v.cedula}</td>
@@ -1469,6 +1476,10 @@ function generarHtmlReportePorPrograma(programas, puestosMap) {
         th, td { border: 1px solid #ccc; padding: 4px; }
         th { background: #f0f0f0; }
         .page-break { page-break-before: always; }
+        .duplicado {
+          background-color: #f8d7da;
+          color: #721c24;
+        }
       </style>
     </head>
     <body>
@@ -1504,8 +1515,10 @@ function generarHtmlReportePorPrograma(programas, puestosMap) {
       const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
       const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
 
+      const claseFila = v.isDuplicate ? "duplicado" : "";
+
       html += `
-        <tr>
+        <tr class="${claseFila}">
           <td>${i + 1}</td>
           <td>${v.leader?.name || ""}</td>
           <td>${v.cedula}</td>
@@ -1759,6 +1772,10 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
         th, td { border: 1px solid #ccc; padding: 4px; }
         th { background: #f0f0f0; }
         .page-break { page-break-before: always; }
+        .duplicado {
+          background-color: #f8d7da;
+          color: #721c24;
+        }
       </style>
     </head>
     <body>
@@ -1789,8 +1806,10 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
     const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
     const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
 
+    const claseFila = v.isDuplicate ? "duplicado" : "";
+
     html += `
-      <tr>
+      <tr class="${claseFila}">
         <td>${i + 1}</td>
         <td>${v.leader?.name || ""}</td>
         <td>${v.cedula}</td>
