@@ -1794,7 +1794,6 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
             <th>Puesto</th>
             <th>Programa</th>
             <th>Tipo</th>
-            
             <th>Fecha</th>
             <th>Digitador</th>
             <th>Recomendado Por</th>
@@ -1805,9 +1804,7 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
 
   votaciones.forEach((v, i) => {
     const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
-    const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
     const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
-
     const claseFila = v.isDuplicate ? "duplicado" : "";
 
     html += `
@@ -1821,7 +1818,6 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
         <td>${puestoNombre}</td>
         <td>${v.programa?.nombre || ""}</td>
         <td>${v.tipo?.nombre || ""}</td>
-        
         <td>${new Date(v.createdAt).toLocaleDateString()}</td>
         <td>${v.digitador?.username || ""}</td>
         <td>${v.recommendedBy?.name || ""}</td>
@@ -1841,7 +1837,6 @@ export const exportPdfGeneral = async (req, res) => {
       ? { width: "216mm", height: "340mm" }
       : { format: "A4" };
 
-    // 🔹 Traer todas las votaciones
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
@@ -1854,39 +1849,50 @@ export const exportPdfGeneral = async (req, res) => {
       orderBy: { createdAt: "asc" },
     });
 
-    // 🔹 Traer todos los puestos
     const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
     const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
 
     const html = generarHtmlReporteGeneral(votaciones, puestosMap);
 
-    // 🔹 Crear PDF
-    const browser = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    // 🔹 Crear PDF usando tu launchBrowser()
+    const browser = await launchBrowser(); // ✅ aquí ya no da error
+    try {
+      const page = await browser.newPage();
 
-    const pdf = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-    });
+      // Bloquear recursos innecesarios y aumentar timeout
+      await page.setRequestInterception(true);
+      page.on("request", req => {
+        if (["image", "font", "stylesheet", "script"].includes(req.resourceType())) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
 
-    await browser.close();
+      await page.setContent(html, { waitUntil: "networkidle2", timeout: 0 }); // ✅ networkidle2 + timeout
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=reporte_general.pdf");
-    res.end(pdf);
+      const pdf = await page.pdf({
+        ...pdfSize,
+        landscape: true,
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: `<span></span>`,
+        footerTemplate: `
+          <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
+            Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+          </div>
+        `,
+        margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+        timeout: 60000
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "attachment; filename=reporte_general.pdf");
+      res.end(pdf);
+
+    } finally {
+      await browser.close(); // ✅ cerrar siempre
+    }
 
   } catch (error) {
     console.error(error);
@@ -1923,38 +1929,50 @@ export const exportZipGeneral = async (req, res) => {
     const archive = archiver("zip");
     archive.pipe(res);
 
-    // 📄 Todo en un solo PDF
-    const page = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
-    }).then(browser => browser.newPage());
+    const browser = await launchBrowser(); // ✅ aquí también
+    try {
+      const page = await browser.newPage();
 
-    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
-    await page.setContent(html, { waitUntil: "networkidle0" });
+      await page.setRequestInterception(true);
+      page.on("request", req => {
+        if (["image", "font", "stylesheet", "script"].includes(req.resourceType())) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
 
-    const pdfUint8 = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-    });
+      const html = generarHtmlReporteGeneral(votaciones, puestosMap);
+      await page.setContent(html, { waitUntil: "networkidle2", timeout: 0 });
 
-    archive.append(Buffer.from(pdfUint8), { name: `reporte_general.pdf` });
+      const pdfUint8 = await page.pdf({
+        ...pdfSize,
+        landscape: true,
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: `<span></span>`,
+        footerTemplate: `
+          <div style="width:100%; font-size:9px; text-align:center;">
+            Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+          </div>
+        `,
+        margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+        timeout: 60000
+      });
 
-    await archive.finalize();
+      archive.append(Buffer.from(pdfUint8), { name: `reporte_general.pdf` });
+      await archive.finalize();
+
+    } finally {
+      await browser.close(); // ✅ cerrar siempre
+    }
 
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 export const exportExcelGeneral = async (req, res) => {
   try {
