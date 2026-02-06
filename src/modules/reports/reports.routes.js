@@ -54,7 +54,9 @@ router.get("/dashboard/exportexcel", exportExcelPorLider);
 router.get("/dashboard/exportzippdf", exportZipPorLider);
 
 router.get("/dashboard/exportpdfporpuesto", exportPdfPorPuesto);
-router.get("/dashboard/exportzippdfporpuesto", exportZipPorPuesto); 
+//router.get("/dashboard/exportzippdfporpuesto", exportZipPorPuesto);
+router.get("/dashboard/exportzipporpuesto", exportZipPorPuesto);
+                        
 router.get("/dashboard/exportexcelporpuesto", exportExcelPorPuesto); 
 
 router.get("/dashboard/exportpdfporprograma", exportPdfPorPrograma);
@@ -62,7 +64,9 @@ router.get("/dashboard/exportzippdfporprograma", exportZipPorPrograma);
 router.get("/dashboard/exportexcelporprograma", exportExcelPorPrograma); 
 
 router.get("/dashboard/exportpdfgeneral", exportPdfGeneral);
-router.get("/dashboard/exportzippdfgeneral", exportZipGeneral); 
+//router.get("/dashboard/exportzippdfgeneral", exportZipGeneral); 
+router.get("/dashboard/exportzipgeneral", exportZipGeneral); 
+                       
 router.get("/dashboard/exportexcelgeneral", exportExcelGeneral); 
 
 router.get("/dashboard/exportpdfcedulas", exportPdfCedulas);
