@@ -1777,6 +1777,7 @@ async function fetchVotacionesInBatches(where, batchSize) {
       include: {
         leader: { select: { name: true } },
         tipo: { select: { nombre: true } },
+        sede: true,
         programa: { select: { nombre: true } },
         digitador: { select: { username: true } },
         recommendedBy: { select: { name: true } },
@@ -1831,6 +1832,7 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
             <th>Barrio</th>
             <th>Puesto</th>
             <th>Programa</th>
+            <th>Sede</th>
             <th>Tipo</th>
             
             <th>Fecha</th>
@@ -1843,6 +1845,7 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
 
   votaciones.forEach((v, i) => {
     const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+    
     const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
     const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
 
@@ -1858,6 +1861,7 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
         <td>${v.barrio || ""}</td>
         <td>${puestoNombre}</td>
         <td>${v.programa?.nombre || ""}</td>
+        <td>${v.sede?.nombre || ""}</td>
         <td>${v.tipo?.nombre || ""}</td>
         
         <td>${new Date(v.createdAt).toLocaleDateString()}</td>
@@ -2031,9 +2035,11 @@ export const exportZipGeneral = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
     const formato = req.query.formato || "carta";
-    const pdfSize = formato === "oficio"
-      ? { width: "216mm", height: "340mm" }
-      : { format: "A4" };
+
+    const pdfSize =
+      formato === "oficio"
+        ? { width: "216mm", height: "340mm" }
+        : { format: "A4" };
 
     const votaciones = await prisma.votacion.findMany({
       where,
@@ -2041,28 +2047,45 @@ export const exportZipGeneral = async (req, res) => {
         leader: { select: { name: true } },
         tipo: { select: { nombre: true } },
         programa: { select: { nombre: true } },
+        sede: { select: { nombre: true } },
         digitador: { select: { username: true } },
         recommendedBy: { select: { name: true } },
       },
       orderBy: { createdAt: "asc" },
     });
 
-    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
-    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true }
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
 
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", "attachment; filename=reportes_general.zip");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reportes_general.zip"
+    );
 
     const archive = archiver("zip");
     archive.pipe(res);
 
     // 📄 Todo en un solo PDF
-    const page = await launchBrowser({
+    const browser = await launchBrowser({
       headless: true,
-      args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
-    }).then(browser => browser.newPage());
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu"
+      ]
+    });
+
+    const page = await browser.newPage();
 
     const html = generarHtmlReporteGeneral(votaciones, puestosMap);
+
     await page.setContent(html, { waitUntil: "networkidle0" });
 
     const pdfUint8 = await page.pdf({
@@ -2076,10 +2099,20 @@ export const exportZipGeneral = async (req, res) => {
           Página <span class="pageNumber"></span> de <span class="totalPages"></span>
         </div>
       `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+      margin: {
+        top: "15mm",
+        bottom: "20mm",
+        left: "15mm",
+        right: "15mm"
+      }
     });
 
-    archive.append(Buffer.from(pdfUint8), { name: `reporte_general.pdf` });
+    await page.close();
+    await browser.close();
+
+    archive.append(Buffer.from(pdfUint8), {
+      name: "reporte_general.pdf"
+    });
 
     await archive.finalize();
 
@@ -2088,6 +2121,7 @@ export const exportZipGeneral = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 export const exportExcelGeneral = async (req, res) => {
   try {
