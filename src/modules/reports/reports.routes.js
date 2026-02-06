@@ -60,7 +60,9 @@ router.get("/dashboard/exportzipporpuesto", exportZipPorPuesto);
 router.get("/dashboard/exportexcelporpuesto", exportExcelPorPuesto); 
 
 router.get("/dashboard/exportpdfporprograma", exportPdfPorPrograma);
-router.get("/dashboard/exportzippdfporprograma", exportZipPorPrograma); 
+//router.get("/dashboard/exportzippdfporprograma", exportZipPorPrograma); 
+router.get("/dashboard/exportzipporprograma", exportZipPorPrograma); 
+                       
 router.get("/dashboard/exportexcelporprograma", exportExcelPorPrograma); 
 
 router.get("/dashboard/exportpdfgeneral", exportPdfGeneral);
