@@ -1764,6 +1764,44 @@ export const exportExcelPorPrograma = async (req, res) => {
 };
 
 
+const PDF_BATCH_SIZE = 1000;   // registros por página lógica
+const MAX_REGISTROS = 20000;   // límite duro
+
+async function fetchVotacionesInBatches(where, batchSize) {
+  let skip = 0;
+  let all = [];
+
+  while (true) {
+    const batch = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+        digitador: { select: { username: true } },
+        recommendedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+      skip,
+      take: batchSize,
+    });
+
+    if (!batch.length) break;
+
+    all.push(...batch);
+    skip += batchSize;
+
+    // 🧠 protección
+    if (all.length > MAX_REGISTROS) {
+      throw new Error(`El reporte supera el máximo permitido (${MAX_REGISTROS})`);
+    }
+  }
+
+  return all;
+}
+
+
+
 function generarHtmlReporteGeneral(votaciones, puestosMap) {
   let html = `
   <html>
@@ -1832,7 +1870,7 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
   html += `</tbody></table></body></html>`;
   return html;
 }
-
+/*
 export const exportPdfGeneral = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
@@ -1893,6 +1931,101 @@ export const exportPdfGeneral = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+*/
+export const exportPdfGeneral = async (req, res) => {
+  try {
+    req.setTimeout(0);
+    res.setTimeout(0);
+
+    const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "carta";
+
+    const pdfSize =
+      formato === "oficio"
+        ? { width: "216mm", height: "340mm" }
+        : { format: "A4" };
+
+    // 🔹 Puestos (lookup liviano)
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true }
+    });
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    // 🔹 Traer votaciones en lotes
+    let votaciones;
+    try {
+      votaciones = await fetchVotacionesInBatches(where, PDF_BATCH_SIZE);
+    } catch (limitError) {
+      return res.status(413).json({
+        error: limitError.message,
+        recomendacion: "Use filtros o exporte en Excel"
+      });
+    }
+
+    if (!votaciones.length) {
+      return res.status(404).json({ error: "No hay datos para exportar" });
+    }
+
+    // 🔹 HTML
+    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
+
+    // 🔹 Puppeteer (1 browser, 1 page)
+    const browser = await launchBrowser({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu"
+      ]
+    });
+
+    const page = await browser.newPage();
+    page.setDefaultTimeout(0);
+    page.setDefaultNavigationTimeout(0);
+
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdf = await page.pdf({
+      ...pdfSize,
+      landscape: true,
+      printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: `<span></span>`,
+      footerTemplate: `
+        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
+          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+        </div>
+      `,
+      margin: {
+        top: "15mm",
+        bottom: "20mm",
+        left: "15mm",
+        right: "15mm"
+      }
+    });
+
+    await page.close();
+    await browser.close();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_general.pdf"
+    );
+    res.end(pdf);
+
+  } catch (error) {
+    console.error("❌ Error exportPdfGeneral:", error);
+    res.status(500).json({
+      error: "No fue posible generar el PDF",
+      detalle: error.message
+    });
+  }
+};
+
 
 export const exportZipGeneral = async (req, res) => {
   try {
