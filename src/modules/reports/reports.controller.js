@@ -8,11 +8,12 @@ import fs from "fs";
 import { createRequire } from "module";
 import path from "path";
 import archiver from "archiver";
+import htmlToPdf from "html-pdf-node";
 
 
 //import { launchBrowser } from "../../utils/puppeteer.js";
 
-import { launchBrowser } from "../../utils/playwright.js";
+//import { launchBrowser } from "../../utils/playwright.js";
 
 
 
@@ -1801,12 +1802,13 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
   let html = `
   <html>
     <head>
+      <meta charset="utf-8" />
       <style>
-        body { font-family: Arial; font-size: 11px; margin: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        body { font-family: Arial, sans-serif; font-size: 11px; }
+        h1 { text-align: center; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid #ccc; padding: 4px; }
         th { background: #f0f0f0; }
-        .page-break { page-break-before: always; }
         .duplicado {
           background-color: #f8d7da;
           color: #721c24;
@@ -1827,7 +1829,6 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
             <th>Puesto</th>
             <th>Programa</th>
             <th>Tipo</th>
-            
             <th>Fecha</th>
             <th>Digitador</th>
             <th>Recomendado Por</th>
@@ -1838,9 +1839,7 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
 
   votaciones.forEach((v, i) => {
     const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
-    const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
     const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
-
     const claseFila = v.isDuplicate ? "duplicado" : "";
 
     html += `
@@ -1854,7 +1853,6 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
         <td>${puestoNombre}</td>
         <td>${v.programa?.nombre || ""}</td>
         <td>${v.tipo?.nombre || ""}</td>
-        
         <td>${new Date(v.createdAt).toLocaleDateString()}</td>
         <td>${v.digitador?.username || ""}</td>
         <td>${v.recommendedBy?.name || ""}</td>
@@ -1862,19 +1860,32 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
     `;
   });
 
-  html += `</tbody></table></body></html>`;
+  html += `
+        </tbody>
+      </table>
+    </body>
+  </html>
+  `;
+
   return html;
 }
+
 
 export const exportPdfGeneral = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
     const formato = req.query.formato || "carta";
 
-    const pdfSize =
-      formato === "oficio"
-        ? { width: "216mm", height: "340mm" }
-        : { format: "A4" };
+    const pdfOptions = {
+      format: formato === "oficio" ? "Legal" : "A4",
+      landscape: true,
+      margin: {
+        top: "15mm",
+        bottom: "20mm",
+        left: "15mm",
+        right: "15mm",
+      },
+    };
 
     const votaciones = await prisma.votacion.findMany({
       where,
@@ -1891,42 +1902,18 @@ export const exportPdfGeneral = async (req, res) => {
     const puestosDb = await prisma.puestoVotacion.findMany({
       select: { id: true, puesto: true },
     });
-    const puestosMap = Object.fromEntries(
-      puestosDb.map(p => [p.id, p.puesto])
-    );
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
 
     const html = generarHtmlReporteGeneral(votaciones, puestosMap);
 
-    // ✅ Playwright correcto
-    const browser = await launchBrowser();
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
-    await page.setContent(html, { waitUntil: "networkidle" });
-
-    const pdf = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-    });
-
-    await page.close();
-    await context.close();
+    const pdfBuffer = await htmlToPdf.generatePdf(
+      { content: html },
+      pdfOptions
+    );
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=reporte_general.pdf"
-    );
-    res.end(pdf);
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_general.pdf");
+    res.end(pdfBuffer);
 
   } catch (error) {
     console.error(error);
@@ -1940,10 +1927,16 @@ export const exportZipGeneral = async (req, res) => {
     const where = buildWhereByRole(req.user);
     const formato = req.query.formato || "carta";
 
-    const pdfSize =
-      formato === "oficio"
-        ? { width: "216mm", height: "340mm" }
-        : { format: "A4" };
+    const pdfOptions = {
+      format: formato === "oficio" ? "Legal" : "A4",
+      landscape: true,
+      margin: {
+        top: "15mm",
+        bottom: "20mm",
+        left: "15mm",
+        right: "15mm",
+      },
+    };
 
     const votaciones = await prisma.votacion.findMany({
       where,
@@ -1960,48 +1953,21 @@ export const exportZipGeneral = async (req, res) => {
     const puestosDb = await prisma.puestoVotacion.findMany({
       select: { id: true, puesto: true },
     });
-    const puestosMap = Object.fromEntries(
-      puestosDb.map(p => [p.id, p.puesto])
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
+    const pdfBuffer = await htmlToPdf.generatePdf(
+      { content: html },
+      pdfOptions
     );
 
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=reportes_general.zip"
-    );
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_general.zip");
 
     const archive = archiver("zip");
     archive.pipe(res);
 
-    // ✅ browser único
-    const browser = await launchBrowser();
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
-    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
-    await page.setContent(html, { waitUntil: "networkidle" });
-
-    const pdfUint8 = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-    });
-
-    await page.close();
-    await context.close();
-
-    archive.append(Buffer.from(pdfUint8), {
-      name: "reporte_general.pdf",
-    });
-
+    archive.append(pdfBuffer, { name: "reporte_general.pdf" });
     await archive.finalize();
 
   } catch (error) {
@@ -2009,6 +1975,7 @@ export const exportZipGeneral = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 export const exportExcelGeneral = async (req, res) => {
