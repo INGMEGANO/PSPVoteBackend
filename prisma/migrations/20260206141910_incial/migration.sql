@@ -72,6 +72,7 @@ CREATE TABLE `Votacion` (
     `tipoId` VARCHAR(191) NULL,
     `esPago` BOOLEAN NOT NULL DEFAULT false,
     `planilla` INTEGER NULL,
+    `mesa` VARCHAR(191) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
@@ -222,4 +223,3 @@ ALTER TABLE `VotacionConfirmacion` ADD CONSTRAINT `VotacionConfirmacion_votacion
 
 -- AddForeignKey
 ALTER TABLE `VotacionConfirmacion` ADD CONSTRAINT `VotacionConfirmacion_confirmadoPorId_fkey` FOREIGN KEY (`confirmadoPorId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
