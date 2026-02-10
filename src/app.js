@@ -20,6 +20,8 @@ import analyticsRoutes from "./modules/analytics/analytics.routes.js";
 
 import reportsRoutes from "./modules/reports/reports.routes.js"
 
+import excelRoutes from "./modules/validaciones/excel.routes.js";
+
 import path from 'path';
 
 
@@ -47,6 +49,8 @@ app.use("/api/votaciones", votacionesRoutes)
 app.use("/api/analytics", analyticsRoutes);
 
 app.use("/api/reports", reportsRoutes)
+
+app.use("/api/validaciones", excelRoutes);
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
