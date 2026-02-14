@@ -190,6 +190,7 @@ export const generarPdfPorLider = (liderData, puestosMap, formato = "A4") => {
 /**
  * 🏫 Genera PDF por Puesto
  */
+/*
 export const generarPdfPorPuesto = (puestoData, puestosMap, formato = "A4") => {
   return new Promise((resolve, reject) => {
     try {
@@ -270,6 +271,78 @@ export const generarPdfPorPuesto = (puestoData, puestosMap, formato = "A4") => {
     }
   });
 };
+*/
+export const generarPdfPorPuesto = (puestoData, puestosMap, formato = "A4") => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: formato === "oficio" ? [612, 792] : "A4",
+        margin: 15,
+      });
+
+      const chunks = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", (error) => reject(error));
+
+      // Cada puesto
+      puestoData.forEach((puesto, idx) => {
+        if (idx > 0) doc.addPage();
+
+        doc.fontSize(16).font("Helvetica-Bold").text(`Puesto: ${puesto.puesto}`, { align: "center" });
+        doc.fontSize(10).font("Helvetica");
+        doc.text(`Total de votantes: ${puesto.votaciones.length}`);
+        doc.moveDown();
+
+        // Tabla
+        const columnas = ["#", "Cédula", "Nombre", "Líder", "Puesto", "Tipo", "Fecha"];
+        const pageWidth = doc.page.width;
+        const colWidth = (pageWidth - 30) / columnas.length;
+        const rowHeight = 16;
+        let currentY = doc.y;
+
+        doc.fontSize(7).font("Helvetica-Bold");
+        columnas.forEach((col, i) => {
+          doc.text(col, 15 + i * colWidth, currentY, { width: colWidth - 2, align: "center", truncate: true });
+        });
+        currentY += rowHeight;
+
+        doc.fontSize(6).font("Helvetica");
+        puesto.votaciones.forEach((v, i) => {
+          if (currentY + rowHeight > doc.page.height - 20) {
+            doc.addPage();
+            currentY = 15;
+          }
+
+          const nombre = `${v.nombre1 || ""} ${v.nombre2 || ""} ${v.apellido1 || ""} ${v.apellido2 || ""}`.trim();
+          const nombrePuesto = v.puestoVotacion ? puestosMap[v.puestoVotacion] || "SIN PUESTO" : "SIN PUESTO";
+
+          const datos = [
+            i + 1,
+            v.cedula || "",
+            nombre,
+            v.leader?.name || "",
+            nombrePuesto,
+            v.tipo?.nombre || "",
+            v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-CO") : "",
+          ];
+
+          datos.forEach((dato, j) => {
+            doc.text(String(dato).substring(0, 15), 15 + j * colWidth, currentY, { width: colWidth - 2, align: "center", truncate: true });
+          });
+
+          currentY += rowHeight;
+        });
+      });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+
 
 /**
  * 🎓 Genera PDF por Programa
