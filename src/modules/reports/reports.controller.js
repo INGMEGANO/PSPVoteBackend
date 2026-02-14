@@ -1,5 +1,6 @@
 import prisma from "../../prisma.js"
 import { buildWhereByRole, buildDashboardWhere } from "./reports.utils.js"
+import { generarPdfCedulasDuplicadas } from "../../utils/pdfkit.js";
 import { Parser } from 'json2csv';
 import XLSX from "xlsx";
 import fs from "fs";
@@ -2328,17 +2329,18 @@ export const exportPdfCedulasDuplicadasAuditoria = async (req, res) => {
     const duplicadasMap = {};
 
     votaciones.forEach(v => {
-      if (!v.cedula) return;
+      const cedula = v.cedula?.toString().trim();
+      if (!cedula) return;
 
-      if (!duplicadasMap[v.cedula]) {
-        duplicadasMap[v.cedula] = {
-          cedula: v.cedula,
+      if (!duplicadasMap[cedula]) {
+        duplicadasMap[cedula] = {
+          cedula,
           nombre: `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim(),
           registros: [],
         };
       }
 
-      duplicadasMap[v.cedula].registros.push({
+      duplicadasMap[cedula].registros.push({
         lider: v.leader?.name || "SIN_LÍDER",
         fecha: v.createdAt,
       });
@@ -2357,39 +2359,39 @@ export const exportPdfCedulasDuplicadasAuditoria = async (req, res) => {
         };
       });
 
-    const html = generarHtmlCedulasDuplicadasAuditoria(duplicadas);
+    // 🔹 DEBUG: ver cuántos duplicados hay
+    console.log("Duplicados encontrados:", duplicadas.length);
 
-    const browser = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    const doc = await generarPdfCedulasDuplicadas(duplicadas);
+
+    // Capturar el PDF en un buffer
+    const chunks = [];
+    
+    doc.on("data", (chunk) => {
+      chunks.push(chunk);
     });
 
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "15mm", bottom: "15mm", left: "15mm", right: "15mm" },
+    doc.on("end", () => {
+      const pdf = Buffer.concat(chunks);
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=cedulas_duplicadas_auditoria.pdf"
+      );
+      res.end(pdf);
     });
 
-    await browser.close();
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=cedulas_duplicadas_auditoria.pdf"
-    );
-    res.end(pdf);
+    doc.on("error", (error) => {
+      console.error("Error generando PDF:", error);
+      res.status(500).json({ error: error.message });
+    });
 
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
 };
-
-
-
 
 function buildWhereConfirmados(req) {
   const baseWhere = buildWhereByRole(req.user);
