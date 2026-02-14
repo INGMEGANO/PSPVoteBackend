@@ -11,7 +11,7 @@ import path from "path";
 import archiver from "archiver";
 
 
-import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma } from "./pdf-generator.js";
+import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma, generarPdfReporteGeneral, generarPdfCedulas, generarPdfConfirmados } from "./pdf-generator.js";
 
 
 
@@ -1676,159 +1676,44 @@ function generarHtmlReporteGeneral(votaciones, puestosMap) {
   html += `</tbody></table></body></html>`;
   return html;
 }
-/*
+
 export const exportPdfGeneral = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
-    const formato = req.query.formato || "carta";
-    const pdfSize = formato === "oficio"
-      ? { width: "216mm", height: "340mm" }
-      : { format: "A4" };
+    const formato = req.query.formato || "A4";
 
-    // 🔹 Traer todas las votaciones
+    // Traer votaciones
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
-        leader: { select: { name: true } },
         tipo: { select: { nombre: true } },
         programa: { select: { nombre: true } },
-        digitador: { select: { username: true } },
-        recommendedBy: { select: { name: true } },
       },
       orderBy: { createdAt: "asc" },
     });
 
-    // 🔹 Traer todos los puestos
-    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
+    if (!votaciones.length) {
+      return res.status(404).json({ error: "No hay datos para exportar" });
+    }
+
+    // Lookup de puestos
+    const puestoIds = [...new Set(votaciones.map(v => v.puestoVotacion).filter(Boolean))];
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
     const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
 
-    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
-
-    // 🔹 Crear PDF
-    const browser = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdf = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-    });
-
-    await browser.close();
+    // Generar PDF
+    const pdf = await generarPdfReporteGeneral(votaciones, puestosMap, formato);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=reporte_general.pdf");
     res.end(pdf);
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-};
-*/
-export const exportPdfGeneral = async (req, res) => {
-  try {
-    req.setTimeout(0);
-    res.setTimeout(0);
-
-    const where = buildWhereByRole(req.user);
-    const formato = req.query.formato || "carta";
-
-    const pdfSize =
-      formato === "oficio"
-        ? { width: "216mm", height: "340mm" }
-        : { format: "A4" };
-
-    // 🔹 Puestos (lookup liviano)
-    const puestosDb = await prisma.puestoVotacion.findMany({
-      select: { id: true, puesto: true }
-    });
-    const puestosMap = Object.fromEntries(
-      puestosDb.map(p => [p.id, p.puesto])
-    );
-
-    // 🔹 Traer votaciones en lotes
-    let votaciones;
-    try {
-      votaciones = await fetchVotacionesInBatches(where, PDF_BATCH_SIZE);
-    } catch (limitError) {
-      return res.status(413).json({
-        error: limitError.message,
-        recomendacion: "Use filtros o exporte en Excel"
-      });
-    }
-
-    if (!votaciones.length) {
-      return res.status(404).json({ error: "No hay datos para exportar" });
-    }
-
-    // 🔹 HTML
-    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
-
-    // 🔹 Puppeteer (1 browser, 1 page)
-    const browser = await launchBrowser({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu"
-      ]
-    });
-
-    const page = await browser.newPage();
-    page.setDefaultTimeout(0);
-    page.setDefaultNavigationTimeout(0);
-
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdf = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: {
-        top: "15mm",
-        bottom: "20mm",
-        left: "15mm",
-        right: "15mm"
-      }
-    });
-
-    await page.close();
-    await browser.close();
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=reporte_general.pdf"
-    );
-    res.end(pdf);
-
-  } catch (error) {
     console.error("❌ Error exportPdfGeneral:", error);
-    res.status(500).json({
-      error: "No fue posible generar el PDF",
-      detalle: error.message
-    });
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -1836,86 +1721,38 @@ export const exportPdfGeneral = async (req, res) => {
 export const exportZipGeneral = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
-    const formato = req.query.formato || "carta";
-
-    const pdfSize =
-      formato === "oficio"
-        ? { width: "216mm", height: "340mm" }
-        : { format: "A4" };
+    const formato = req.query.formato || "A4";
 
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
-        leader: { select: { name: true } },
         tipo: { select: { nombre: true } },
         programa: { select: { nombre: true } },
-        sede: { select: { nombre: true } },
-        digitador: { select: { username: true } },
-        recommendedBy: { select: { name: true } },
       },
       orderBy: { createdAt: "asc" },
     });
 
-    const puestosDb = await prisma.puestoVotacion.findMany({
-      select: { id: true, puesto: true }
-    });
+    if (!votaciones.length) {
+      return res.status(404).json({ error: "No hay datos para exportar" });
+    }
 
-    const puestosMap = Object.fromEntries(
-      puestosDb.map(p => [p.id, p.puesto])
-    );
+    const puestoIds = [...new Set(votaciones.map(v => v.puestoVotacion).filter(Boolean))];
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
 
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=reportes_general.zip"
-    );
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_general.zip");
 
     const archive = archiver("zip");
     archive.pipe(res);
 
-    // 📄 Todo en un solo PDF
-    const browser = await launchBrowser({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu"
-      ]
-    });
+    // Generar un PDF dentro del ZIP
+    const pdf = await generarPdfReporteGeneral(votaciones, puestosMap, formato);
 
-    const page = await browser.newPage();
-
-    const html = generarHtmlReporteGeneral(votaciones, puestosMap);
-
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdfUint8 = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: {
-        top: "15mm",
-        bottom: "20mm",
-        left: "15mm",
-        right: "15mm"
-      }
-    });
-
-    await page.close();
-    await browser.close();
-
-    archive.append(Buffer.from(pdfUint8), {
-      name: "reporte_general.pdf"
-    });
-
+    archive.append(pdf, { name: "reporte_general.pdf" });
     await archive.finalize();
 
   } catch (error) {
@@ -1923,6 +1760,7 @@ export const exportZipGeneral = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 
 export const exportExcelGeneral = async (req, res) => {
@@ -2054,30 +1892,19 @@ export const exportPdfCedulas = async (req, res) => {
       orderBy: { cedula: "asc" },
     });
 
+    if (!votaciones.length) {
+      return res.status(404).json({ error: "No hay datos para exportar" });
+    }
+
     const puestos = await prisma.puestoVotacion.findMany({
       select: { id: true, puesto: true },
     });
     const puestosMap = Object.fromEntries(puestos.map(p => [p.id, p.puesto]));
 
-    const html = generarHtmlReporteCedulas(votaciones, puestosMap, modo);
-
-    const browser = await launchBrowser({ headless: true, args: ["--no-sandbox"] });
-    const page = await browser.newPage();
-    await page.setContent(html);
-
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "15mm", bottom: "15mm", left: "15mm", right: "15mm" },
-    });
-
-    await browser.close();
+    const pdf = await generarPdfCedulas(votaciones, puestosMap, modo);
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=cedulas_${modo}.pdf`
-    );
+    res.setHeader("Content-Disposition", `attachment; filename=cedulas_${modo}.pdf`);
     res.end(pdf);
 
   } catch (error) {
@@ -2086,12 +1913,13 @@ export const exportPdfCedulas = async (req, res) => {
   }
 };
 
+
+
 export const exportZipCedulas = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
     const modo = req.query.modo || "cedulas";
 
-    // 🔹 Traer votaciones
     const votaciones = await prisma.votacion.findMany({
       where,
       select: {
@@ -2107,46 +1935,23 @@ export const exportZipCedulas = async (req, res) => {
       orderBy: { cedula: "asc" },
     });
 
-    // 🔹 Mapear puestos
+    if (!votaciones.length) {
+      return res.status(404).json({ error: "No hay datos para exportar" });
+    }
+
     const puestos = await prisma.puestoVotacion.findMany({
       select: { id: true, puesto: true },
     });
     const puestosMap = Object.fromEntries(puestos.map(p => [p.id, p.puesto]));
 
-    // 🔹 Generar HTML
-    const html = generarHtmlReporteCedulas(votaciones, puestosMap, modo);
-
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=cedulas_${modo}.zip`
-    );
+    res.setHeader("Content-Disposition", `attachment; filename=cedulas_${modo}.zip`);
 
     const archive = archiver("zip");
     archive.pipe(res);
 
-    // 🔹 Crear PDF
-    const browser = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdfUint8 = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "15mm", bottom: "15mm", left: "15mm", right: "15mm" },
-    });
-
-    await page.close();
-    await browser.close();
-
-    // 🔹 Agregar PDF al ZIP
-    archive.append(Buffer.from(pdfUint8), {
-      name: `cedulas_${modo}.pdf`,
-    });
+    const pdf = await generarPdfCedulas(votaciones, puestosMap, modo);
+    archive.append(pdf, { name: `cedulas_${modo}.pdf` });
 
     await archive.finalize();
 
@@ -2155,6 +1960,7 @@ export const exportZipCedulas = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 export const exportExcelCedulas = async (req, res) => {
   try {
@@ -2491,11 +2297,7 @@ export const exportPdfConfirmados = async (req, res) => {
       include: {
         leader: { select: { name: true } },
         digitador: { select: { username: true } },
-        confirmacion: {
-          include: {
-            confirmadoPor: { select: { username: true } }
-          }
-        }
+        confirmacion: { include: { confirmadoPor: { select: { username: true } } } }
       },
       orderBy: { createdAt: "asc" }
     });
@@ -2505,111 +2307,64 @@ export const exportPdfConfirmados = async (req, res) => {
     });
     const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
 
-    const html = generarHtmlReporteConfirmados(votaciones, puestosMap);
-
-    const browser = await launchBrowser({ headless: true });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdf = await page.pdf({
-      ...pdfSizeOficio,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: {
-        top: "15mm",
-        bottom: "20mm",
-        left: "10mm",
-        right: "10mm"
-      }
-    });
-    await browser.close();
+    const pdf = await generarPdfConfirmados(votaciones, puestosMap);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=votaciones_confirmadas.pdf");
     res.end(pdf);
 
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 };
 
-export const exportZipConfirmados = async (req, res) => {
-  const where = buildWhereConfirmados(req);
 
-  const votaciones = await prisma.votacion.findMany({
-    where,
-    include: {
-      leader: { select: { name: true } },
-      digitador: { select: { username: true } },
-      confirmacion: {
-        include: {
-          confirmadoPor: { select: { username: true } }
+export const exportZipConfirmados = async (req, res) => {
+  try {
+    const where = buildWhereConfirmados(req);
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        digitador: { select: { username: true } },
+        confirmacion: { include: { confirmadoPor: { select: { username: true } } } }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true }
+    });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_confirmados.zip");
+
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    // PDF principal
+    const pdf = await generarPdfConfirmados(votaciones, puestosMap);
+    archive.append(pdf, { name: "votaciones_confirmadas.pdf" });
+
+    // Agregar imágenes de confirmación
+    for (const v of votaciones) {
+      if (v.confirmacion?.imagen) {
+        const imagePath = path.join(process.cwd(), "uploads", "votos", v.confirmacion.imagen);
+        if (fs.existsSync(imagePath)) {
+          archive.file(imagePath, { name: `imagenes/${v.confirmacion.imagen}` });
         }
       }
     }
-  });
 
-  const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
-  const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+    await archive.finalize();
 
-  const html = generarHtmlReporteConfirmados(votaciones, puestosMap);
-
-  res.setHeader("Content-Type", "application/zip");
-  res.setHeader("Content-Disposition", "attachment; filename=reportes_confirmados.zip");
-
-  const archive = archiver("zip");
-  archive.pipe(res);
-
-  const browser = await launchBrowser({ headless: true });
-  const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: "networkidle0" });
-
-  const pdf = await page.pdf({
-    ...pdfSizeOficio,
-    landscape: true,
-    printBackground: true,
-    displayHeaderFooter: true,
-    footerTemplate: `
-      <div style="width:100%; font-size:9px; text-align:center;">
-        Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-      </div>
-    `,
-    margin: {
-      top: "15mm",
-      bottom: "20mm",
-      left: "10mm",
-      right: "10mm"
-    }
-  });
-
-  for (const v of votaciones) {
-    if (v.confirmacion?.imagen) {
-      const imagePath = path.join(
-        process.cwd(),
-        "uploads",
-        "votos",
-        v.confirmacion.imagen
-      );
-
-      if (fs.existsSync(imagePath)) {
-        archive.file(imagePath, {
-          name: `imagenes/${v.confirmacion.imagen}`
-        });
-      }
-    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
-
-  await browser.close();
-
-  archive.append(Buffer.from(pdf), { name: "votaciones_confirmadas.pdf" });
-
-  await archive.finalize();
 };
 
 

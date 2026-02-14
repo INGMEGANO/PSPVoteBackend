@@ -190,88 +190,7 @@ export const generarPdfPorLider = (liderData, puestosMap, formato = "A4") => {
 /**
  * 🏫 Genera PDF por Puesto
  */
-/*
-export const generarPdfPorPuesto = (puestoData, puestosMap, formato = "A4") => {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({
-        size: formato === "oficio" ? [612, 792] : "A4",
-        margin: 15,
-      });
 
-      const chunks = [];
-
-      doc.on("data", (chunk) => chunks.push(chunk));
-
-      doc.on("end", () => {
-        resolve(Buffer.concat(chunks));
-      });
-
-      doc.on("error", (error) => reject(error));
-
-      // Similar al de líder pero por puesto
-      puestoData.forEach((puesto, idx) => {
-        if (idx > 0) doc.addPage();
-
-        doc.fontSize(16).font("Helvetica-Bold").text(`Puesto: ${puesto.nombre}`, { align: "center" });
-        doc.fontSize(10).font("Helvetica");
-        doc.text(`Total de votantes: ${puesto.votaciones.length}`);
-        doc.moveDown();
-
-        // Tabla simplificada
-        const columnas = ["#", "Cédula", "Nombre", "Líder", "Programa", "Tipo", "Fecha"];
-        const pageWidth = doc.page.width;
-        const colWidth = (pageWidth - 30) / columnas.length;
-        const rowHeight = 16;
-
-        let currentY = doc.y;
-
-        doc.fontSize(7).font("Helvetica-Bold");
-        columnas.forEach((col, i) => {
-          doc.text(col, 15 + i * colWidth, currentY, {
-            width: colWidth - 2,
-            align: "center",
-            truncate: true,
-          });
-        });
-        currentY += rowHeight;
-
-        doc.fontSize(6).font("Helvetica");
-        puesto.votaciones.forEach((v, i) => {
-          if (currentY + rowHeight > doc.page.height - 20) {
-            doc.addPage();
-            currentY = 15;
-          }
-
-          const nombre = `${v.nombre1} ${v.apellido1}`.trim();
-          const datos = [
-            i + 1,
-            v.cedula || "",
-            nombre,
-            v.leader?.name || "",
-            v.programa?.nombre || "",
-            v.tipo?.nombre || "",
-            new Date(v.createdAt).toLocaleDateString("es-CO"),
-          ];
-
-          datos.forEach((dato, j) => {
-            doc.text(String(dato).substring(0, 15), 15 + j * colWidth, currentY, {
-              width: colWidth - 2,
-              align: "center",
-              truncate: true,
-            });
-          });
-          currentY += rowHeight;
-        });
-      });
-
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
-  });
-};
-*/
 export const generarPdfPorPuesto = (puestoData, puestosMap, formato = "A4") => {
   return new Promise((resolve, reject) => {
     try {
@@ -420,6 +339,264 @@ export const generarPdfPorPrograma = (programaData, puestosMap, formato = "A4") 
           });
           currentY += rowHeight;
         });
+      });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+
+/**
+ * 🎓 Genera PDF General
+ */
+
+export const generarPdfReporteGeneral = (votaciones, puestosMap, formato = "A4") => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: formato === "oficio" ? [612, 792] : "A4",
+        margin: 15,
+      });
+
+      const chunks = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", (err) => reject(err));
+
+      // Encabezado
+      doc.fontSize(16).font("Helvetica-Bold").text("Reporte General de Votaciones", { align: "center" });
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica");
+
+      // Columnas
+      const columnas = [
+        "#", "Cédula", "Nombre", "Teléfono", "Dirección", 
+        "Barrio", "Puesto", "Programa", "Tipo", "Fecha"
+      ];
+
+      const pageWidth = doc.page.width;
+      const colWidth = (pageWidth - 30) / columnas.length;
+      const rowHeight = 18;
+      let currentY = doc.y;
+
+      // Encabezado de tabla
+      doc.fontSize(7).font("Helvetica-Bold");
+      columnas.forEach((col, i) => {
+        doc.text(col, 15 + i * colWidth, currentY, { width: colWidth - 2, align: "center", truncate: true });
+      });
+      currentY += rowHeight;
+
+      // Datos
+      doc.fontSize(6).font("Helvetica");
+      votaciones.forEach((v, idx) => {
+        if (currentY + rowHeight > doc.page.height - 20) {
+          doc.addPage();
+          currentY = 15;
+        }
+
+        const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+        const puesto = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+        const datosFila = [
+          idx + 1,
+          v.cedula || "",
+          nombre,
+          v.telefono || "",
+          v.direccion || "",
+          v.barrio || "",
+          puesto,
+          v.programa?.nombre || "",
+          v.tipo?.nombre || "",
+          new Date(v.createdAt).toLocaleDateString("es-CO"),
+        ];
+
+        datosFila.forEach((dato, i) => {
+          doc.text(String(dato).substring(0, 15), 15 + i * colWidth, currentY, {
+            width: colWidth - 2,
+            align: "center",
+            truncate: true,
+          });
+        });
+
+        currentY += rowHeight;
+      });
+
+      // Pie de página
+      doc.fontSize(7).text(`Generado: ${new Date().toLocaleString("es-CO")}`, 15, doc.page.height - 20, {
+        align: "center",
+      });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+
+/**
+ * 🎓 Genera PDF por cedulas
+ */
+
+export const generarPdfCedulas = (votaciones, puestosMap, modo = "cedulas") => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 15,
+      });
+
+      const chunks = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", (err) => reject(err));
+
+      // Encabezado
+      doc.fontSize(16).font("Helvetica-Bold").text(`Reporte de Cédulas - ${modo.toUpperCase()}`, {
+        align: "center",
+      });
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica");
+
+      // Columnas
+      const columnas = [
+        "#", "Cédula", "Nombre completo", "Puesto", "Programa", "Tipo"
+      ];
+
+      const pageWidth = doc.page.width;
+      const colWidth = (pageWidth - 30) / columnas.length;
+      const rowHeight = 18;
+      let currentY = doc.y;
+
+      // Encabezado de tabla
+      doc.fontSize(8).font("Helvetica-Bold");
+      columnas.forEach((col, i) => {
+        doc.text(col, 15 + i * colWidth, currentY, { width: colWidth - 2, align: "center", truncate: true });
+      });
+      currentY += rowHeight;
+
+      // Datos
+      doc.fontSize(7).font("Helvetica");
+      votaciones.forEach((v, idx) => {
+        if (currentY + rowHeight > doc.page.height - 20) {
+          doc.addPage();
+          currentY = 15;
+        }
+
+        const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+        const puesto = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+        const datosFila = [
+          idx + 1,
+          v.cedula || "",
+          nombre,
+          puesto,
+          v.programa?.nombre || "",
+          v.tipo?.nombre || "",
+        ];
+
+        datosFila.forEach((dato, i) => {
+          doc.text(String(dato).substring(0, 20), 15 + i * colWidth, currentY, {
+            width: colWidth - 2,
+            align: "center",
+            truncate: true,
+          });
+        });
+
+        currentY += rowHeight;
+      });
+
+      // Pie de página
+      doc.fontSize(7).text(`Generado: ${new Date().toLocaleString("es-CO")}`, 15, doc.page.height - 20, {
+        align: "center",
+      });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+/**
+ * 🎓 Genera PDF Confirmados
+ */
+
+
+export const generarPdfConfirmados = (votaciones, puestosMap) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 15,
+      });
+
+      const chunks = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", (err) => reject(err));
+
+      // Encabezado
+      doc.fontSize(16).font("Helvetica-Bold").text("Reporte de Votaciones Confirmadas", { align: "center" });
+      doc.moveDown(0.5);
+      doc.fontSize(10).font("Helvetica");
+
+      // Columnas
+      const columnas = [
+        "#", "Cédula", "Nombre completo", "Puesto", "Líder", "Digitador", "Confirmado Por", "Fecha"
+      ];
+      const pageWidth = doc.page.width;
+      const colWidth = (pageWidth - 30) / columnas.length;
+      const rowHeight = 18;
+      let currentY = doc.y;
+
+      // Encabezado de tabla
+      doc.fontSize(8).font("Helvetica-Bold");
+      columnas.forEach((col, i) => {
+        doc.text(col, 15 + i * colWidth, currentY, { width: colWidth - 2, align: "center", truncate: true });
+      });
+      currentY += rowHeight;
+
+      // Datos
+      doc.fontSize(7).font("Helvetica");
+      votaciones.forEach((v, idx) => {
+        if (currentY + rowHeight > doc.page.height - 20) {
+          doc.addPage();
+          currentY = 15;
+        }
+
+        const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+        const puesto = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+        const confirmadoPor = v.confirmacion?.confirmadoPor?.username || "N/A";
+
+        const datosFila = [
+          idx + 1,
+          v.cedula || "",
+          nombre,
+          puesto,
+          v.leader?.name || "N/A",
+          v.digitador?.username || "N/A",
+          confirmadoPor,
+          new Date(v.createdAt).toLocaleDateString("es-CO"),
+        ];
+
+        datosFila.forEach((dato, i) => {
+          doc.text(String(dato).substring(0, 15), 15 + i * colWidth, currentY, {
+            width: colWidth - 2,
+            align: "center",
+            truncate: true,
+          });
+        });
+
+        currentY += rowHeight;
+      });
+
+      // Pie de página
+      doc.fontSize(7).text(`Generado: ${new Date().toLocaleString("es-CO")}`, 15, doc.page.height - 20, {
+        align: "center",
       });
 
       doc.end();
