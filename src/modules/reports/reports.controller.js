@@ -10,7 +10,7 @@ import path from "path";
 import archiver from "archiver";
 
 
-import { launchBrowser } from "../../utils/puppeteer.js";
+import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma } from "./pdf-generator.js";
 
 
 
@@ -868,15 +868,7 @@ function generarHtmlReportePorLider(lider, puestosMap) {
 
 export const exportPdfPorLider = async (req, res) => {
   try {
-
-    const formato = req.query.formato || "carta";
-
-    const pdfSize =
-      formato === "oficio"
-        ? { width: "216mm", height: "340mm" }
-        : { format: "A4" };
-
-
+    const formato = req.query.formato || "A4";
     const where = buildWhereByRole(req.user);
 
     // 1️⃣ Traer líderes con sus votaciones
@@ -884,20 +876,20 @@ export const exportPdfPorLider = async (req, res) => {
       where: { isActive: true },
       include: {
         votaciones: {
-          where, // tu filtro dinámico
+          where,
           include: {
             tipo: { select: { nombre: true } },
             programa: { select: { nombre: true } },
             digitador: { select: { username: true } },
-            recommendedBy: { select: { name: true } }, // líder que recomendó
+            recommendedBy: { select: { name: true } },
           },
-          orderBy: { createdAt: "asc" }, 
+          orderBy: { createdAt: "asc" },
         },
       },
       orderBy: { name: "asc" },
     });
 
-    // 2️⃣ Lookup de puestos de votación para traducir IDs a nombre real
+    // 2️⃣ Lookup de puestos de votación
     const puestoIds = [
       ...new Set(lideres.flatMap(l => l.votaciones.map(v => v.puestoVotacion)).filter(Boolean))
     ];
@@ -908,42 +900,8 @@ export const exportPdfPorLider = async (req, res) => {
     const puestosMap = {};
     puestosDb.forEach(p => { puestosMap[p.id] = p.puesto; });
 
-    // 3️⃣ Generamos HTML
-    const html = generarHtmlReporte(lideres, puestosMap);
-
-    // 4️⃣ Puppeteer para PDF
-    const browser = await launchBrowser({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu"
-      ]
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdf = await page.pdf({
-      ...pdfSize,
-      printBackground: true,
-      landscape: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: {
-        top: "15mm",
-        bottom: "20mm",
-        left: "15mm",
-        right: "15mm",
-      },
-    });
-
-    await browser.close();
+    // 3️⃣ Generar PDF con pdfkit
+    const pdf = await generarPdfPorLider(lideres, puestosMap, formato);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=reporte_por_lider.pdf");
@@ -957,96 +915,56 @@ export const exportPdfPorLider = async (req, res) => {
 
 
 export const exportZipPorLider = async (req, res) => {
-  const where = buildWhereByRole(req.user);
-  const formato = req.query.formato || "carta";
+  try {
+    const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "A4";
 
-  const pdfSize =
-    formato === "oficio"
-      ? { width: "216mm", height: "340mm" }
-      : { format: "A4" };
-
-  const lideres = await prisma.leader.findMany({
-    where: { isActive: true },
-    include: {
-      votaciones: {
-        where,
-        include: {
-          tipo: { select: { nombre: true } },
-          programa: { select: { nombre: true } },
-          digitador: { select: { username: true } },
-          recommendedBy: { select: { name: true } },
+    const lideres = await prisma.leader.findMany({
+      where: { isActive: true },
+      include: {
+        votaciones: {
+          where,
+          include: {
+            tipo: { select: { nombre: true } },
+            programa: { select: { nombre: true } },
+            digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } },
+          },
         },
       },
-    },
-    orderBy: { name: "asc" },
-  });
-
-  // Puestos
-  const puestoIds = [...new Set(lideres.flatMap(l => l.votaciones.map(v => v.puestoVotacion)).filter(Boolean))];
-  const puestosDb = await prisma.puestoVotacion.findMany({
-    where: { id: { in: puestoIds } },
-    select: { id: true, puesto: true },
-  });
-  const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
-
-  res.setHeader("Content-Type", "application/zip");
-  res.setHeader("Content-Disposition", "attachment; filename=reportes_por_lider.zip");
-
-  const archive = archiver("zip");
-  archive.pipe(res);
-
-  const browser = await launchBrowser({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu"
-    ]
-  });
-
-  const BATCH_SIZE = 3;
-
-for (let i = 0; i < lideres.length; i += BATCH_SIZE) {
-  const batch = lideres.slice(i, i + BATCH_SIZE);
-
-  for (const lider of batch) {
-    if (!lider.votaciones.length) continue;
-
-    const page = await browser.newPage();
-    page.setDefaultNavigationTimeout(0);
-    page.setDefaultTimeout(0);
-
-    const html = generarHtmlReportePorLider(lider, puestosMap);
-    await page.setContent(html);
-
-    const pdfUint8 = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
+      orderBy: { name: "asc" },
     });
 
-    const pdfBuffer = Buffer.from(pdfUint8);
-    await page.close();
-
-    archive.append(pdfBuffer, {
-      name: `reporte_lider_${lider.name.replace(/\s+/g, "_").toLowerCase()}.pdf`,
+    // Puestos
+    const puestoIds = [...new Set(lideres.flatMap(l => l.votaciones.map(v => v.puestoVotacion)).filter(Boolean))];
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
     });
+    const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_por_lider.zip");
+
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    // Generar cada PDF individual
+    for (const lider of lideres) {
+      if (!lider.votaciones.length) continue;
+
+      const pdf = await generarPdfPorLider([lider], puestosMap, formato);
+      
+      archive.append(pdf, {
+        name: `reporte_lider_${lider.name.replace(/\s+/g, "_").toLowerCase()}.pdf`,
+      });
+    }
+
+    await archive.finalize();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
-
-  // 🧠 pequeño respiro entre lotes (opcional pero recomendado)
-  await new Promise(r => setTimeout(r, 200));
-}
-
-  await browser.close();
-  await archive.finalize();
 };
 
 
@@ -1216,21 +1134,15 @@ function generarHtmlReportePorPuesto(puestos) {
 export const exportPdfPorPuesto = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "A4";
 
-    // 🔹 Manejar tamaño de PDF según formato
-    const formato = req.query.formato || "carta";
-    const pdfSize =
-      formato === "oficio"
-        ? { width: "216mm", height: "340mm" }
-        : { format: "A4" };
+    // Traer todos los puestos
+    
 
-    // 🔹 Traer todos los puestos
-    const puestosDb = await prisma.puestoVotacion.findMany({
-      select: { id: true, puesto: true }
-    });
+    const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
     const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
 
-    // 🔹 Traer todas las votaciones
+    // Traer todas las votaciones
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
@@ -1243,7 +1155,7 @@ export const exportPdfPorPuesto = async (req, res) => {
       orderBy: { createdAt: "asc" },
     });
 
-    // 🔹 Agrupar por puesto
+    // Agrupar por puesto
     const puestos = {};
     votaciones.forEach(v => {
       const id = v.puestoVotacion || "SIN_PUESTO";
@@ -1259,32 +1171,8 @@ export const exportPdfPorPuesto = async (req, res) => {
 
     const puestosArray = Object.values(puestos);
 
-    // 🔹 Generar HTML
-    const html = generarHtmlReportePorPuesto(puestosArray);
-
-    // 🔹 Crear PDF con Puppeteer
-    const browser = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdf = await page.pdf({
-      ...pdfSize, // <-- aquí se aplica el formato oficio o A4
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-    });
-
-    await browser.close();
+    // Generar PDF con pdfkit
+    const pdf = await generarPdfPorPuesto(puestosArray, puestosMap, formato);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=reporte_por_puesto.pdf");
@@ -1299,19 +1187,15 @@ export const exportPdfPorPuesto = async (req, res) => {
 export const exportZipPorPuesto = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
-    const formato = req.query.formato || "carta";
-    const pdfSize =
-      formato === "oficio"
-        ? { width: "216mm", height: "340mm" }
-        : { format: "A4" };
+    const formato = req.query.formato || "A4";
 
-    // 🔹 Traer todos los puestos
+    // Traer todos los puestos
     const puestosDb = await prisma.puestoVotacion.findMany({
       select: { id: true, puesto: true }
     });
     const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
 
-    // 🔹 Traer todas las votaciones
+    // Traer todas las votaciones
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
@@ -1324,7 +1208,7 @@ export const exportZipPorPuesto = async (req, res) => {
       orderBy: { createdAt: "asc" },
     });
 
-    // 🔹 Agrupar votaciones por puesto
+    // Agrupar votaciones por puesto
     const puestos = {};
     votaciones.forEach(v => {
       const id = v.puestoVotacion || "SIN_PUESTO";
@@ -1339,50 +1223,23 @@ export const exportZipPorPuesto = async (req, res) => {
     });
     const puestosArray = Object.values(puestos);
 
-    // 🔹 Preparar ZIP
+    // Preparar ZIP
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", "attachment; filename=reportes_por_puesto.zip");
     const archive = archiver("zip");
     archive.pipe(res);
 
-    // 🔹 Abrir Puppeteer
-    const browser = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
-    });
-
+    // Generar PDF por cada puesto
     for (const puesto of puestosArray) {
       if (!puesto.votaciones.length) continue;
 
-      const page = await browser.newPage();
-      page.setDefaultNavigationTimeout(0);
-      page.setDefaultTimeout(0);
+      const pdf = await generarPdfPorPuesto([puesto], puestosMap, formato);
 
-      const html = generarHtmlReportePorPuesto([puesto]);
-      await page.setContent(html);
-
-      const pdfUint8 = await page.pdf({
-        ...pdfSize, // aplica oficio o A4
-        landscape: true,
-        printBackground: true,
-        displayHeaderFooter: true,
-        headerTemplate: `<span></span>`,
-        footerTemplate: `
-          <div style="width:100%; font-size:9px; text-align:center;">
-            Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-          </div>
-        `,
-        margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-      });
-
-      await page.close();
-
-      archive.append(Buffer.from(pdfUint8), {
+      archive.append(pdf, {
         name: `reporte_puesto_${puesto.puesto.replace(/\s+/g, "_").toLowerCase()}.pdf`,
       });
     }
 
-    await browser.close();
     await archive.finalize();
 
   } catch (error) {
@@ -1545,13 +1402,9 @@ function generarHtmlReportePorPrograma(programas, puestosMap) {
 export const exportPdfPorPrograma = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
-    const formato = req.query.formato || "carta";
+    const formato = req.query.formato || "A4";
 
-    const pdfSize = formato === "oficio"
-      ? { width: "216mm", height: "340mm" }
-      : { format: "A4" };
-
-    // 🔹 Traer todas las votaciones
+    // Traer todas las votaciones
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
@@ -1564,11 +1417,11 @@ export const exportPdfPorPrograma = async (req, res) => {
       orderBy: { createdAt: "asc" },
     });
 
-    // 🔹 Traer todos los puestos y generar map
+    // Traer todos los puestos
     const puestosDb = await prisma.puestoVotacion.findMany({ select: { id: true, puesto: true } });
     const puestosMap = Object.fromEntries(puestosDb.map(p => [p.id, p.puesto]));
 
-    // 🔹 Agrupar por programa
+    // Agrupar por programa
     const programas = {};
     votaciones.forEach(v => {
       const nombrePrograma = v.programa?.nombre || "SIN_PROGRAMA";
@@ -1577,31 +1430,8 @@ export const exportPdfPorPrograma = async (req, res) => {
     });
     const programasArray = Object.values(programas);
 
-    const html = generarHtmlReportePorPrograma(programasArray, puestosMap);
-
-    // 🔹 Crear PDF
-    const browser = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdf = await page.pdf({
-      ...pdfSize,
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: `<span></span>`,
-      footerTemplate: `
-        <div style="width:100%; font-size:9px; text-align:center; padding:5px 0;">
-          Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-        </div>
-      `,
-      margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-    });
-
-    await browser.close();
+    // Generar PDF con pdfkit
+    const pdf = await generarPdfPorPrograma(programasArray, puestosMap, formato);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=reporte_por_programa.pdf");
@@ -1616,10 +1446,7 @@ export const exportPdfPorPrograma = async (req, res) => {
 export const exportZipPorPrograma = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
-    const formato = req.query.formato || "carta";
-    const pdfSize = formato === "oficio"
-      ? { width: "216mm", height: "340mm" }
-      : { format: "A4" };
+    const formato = req.query.formato || "A4";
 
     const votaciones = await prisma.votacion.findMany({
       where,
@@ -1651,43 +1478,17 @@ export const exportZipPorPrograma = async (req, res) => {
     const archive = archiver("zip");
     archive.pipe(res);
 
-    const browser = await launchBrowser({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
-    });
-
+    // Generar PDF por cada programa
     for (const programa of programasArray) {
       if (!programa.votaciones.length) continue;
 
-      const page = await browser.newPage();
-      page.setDefaultNavigationTimeout(0);
-      page.setDefaultTimeout(0);
+      const pdf = await generarPdfPorPrograma([programa], puestosMap, formato);
 
-      const html = generarHtmlReportePorPrograma([programa], puestosMap);
-      await page.setContent(html);
-
-      const pdfUint8 = await page.pdf({
-        ...pdfSize,
-        landscape: true,
-        printBackground: true,
-        displayHeaderFooter: true,
-        headerTemplate: `<span></span>`,
-        footerTemplate: `
-          <div style="width:100%; font-size:9px; text-align:center;">
-            Página <span class="pageNumber"></span> de <span class="totalPages"></span>
-          </div>
-        `,
-        margin: { top: "15mm", bottom: "20mm", left: "15mm", right: "15mm" },
-      });
-
-      await page.close();
-
-      archive.append(Buffer.from(pdfUint8), {
+      archive.append(pdf, {
         name: `reporte_programa_${programa.nombre.replace(/\s+/g, "_").toLowerCase()}.pdf`,
       });
     }
 
-    await browser.close();
     await archive.finalize();
 
   } catch (error) {

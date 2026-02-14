@@ -3,10 +3,6 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-/**
- * Extrae correctamente la cédula desde ExcelJS
- */
-
 const normalizarCedula = (value) => {
   if (value === null || value === undefined) return null;
 
@@ -42,7 +38,6 @@ export const validarCedulasExcel = async (req, res) => {
       return res.status(400).json({ error: "El Excel no tiene hojas" });
     }
 
-    // Buscar columna cédula
     const headerRow = sheet.getRow(1);
     let colCedula = null;
 
@@ -57,16 +52,16 @@ export const validarCedulasExcel = async (req, res) => {
       return res.status(400).json({ error: "No se encontró la columna CÉDULA" });
     }
 
-    // Estilo rojo
-    const redFill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFFFC7CE" }
-    };
+    // 👇 Nuevas columnas
+    const colCedulaBD = colCedula + 1;
+    const colEstado = colCedula + 2;
+    const colNombre = colCedula + 3;
+    const colLider = colCedula + 4;
 
-    // 🔍 Validar FILA POR FILA
-    sheet.getRow(1).getCell(colCedula + 1).value = "CEDULA_EN_BD";
-    sheet.getRow(1).getCell(colCedula + 2).value = "ESTADO";
+    sheet.getRow(1).getCell(colCedulaBD).value = "CEDULA_EN_BD";
+    sheet.getRow(1).getCell(colEstado).value = "ESTADO";
+    sheet.getRow(1).getCell(colNombre).value = "NOMBRE";
+    sheet.getRow(1).getCell(colLider).value = "LIDER";
 
     for (let i = 2; i <= sheet.rowCount; i++) {
       const row = sheet.getRow(i);
@@ -76,19 +71,33 @@ export const validarCedulasExcel = async (req, res) => {
 
       const resultado = await prisma.votacion.findFirst({
         where: { cedula: cedulaExcel },
-        select: { cedula: true }
+        include: {
+          leader: true
+        }
       });
 
       if (resultado) {
-        row.getCell(colCedula + 1).value = resultado.cedula;
-        row.getCell(colCedula + 2).value = "DUPLICADA";
+
+        const nombreCompleto = [
+          resultado.nombre1,
+          resultado.nombre2,
+          resultado.apellido1,
+          resultado.apellido2
+        ].filter(Boolean).join(" ");
+
+        row.getCell(colCedulaBD).value = resultado.cedula;
+        row.getCell(colEstado).value = "DUPLICADA";
+        row.getCell(colNombre).value = nombreCompleto;
+        row.getCell(colLider).value = resultado.leader?.name || "";
+
       } else {
-        row.getCell(colCedula + 1).value = "";
-        row.getCell(colCedula + 2).value = "NO EXISTE";
+        row.getCell(colCedulaBD).value = "";
+        row.getCell(colEstado).value = "NO EXISTE";
+        row.getCell(colNombre).value = "";
+        row.getCell(colLider).value = "";
       }
     }
 
-    // Enviar Excel
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -106,5 +115,3 @@ export const validarCedulasExcel = async (req, res) => {
     res.status(500).json({ error: "Error procesando el Excel" });
   }
 };
-
-

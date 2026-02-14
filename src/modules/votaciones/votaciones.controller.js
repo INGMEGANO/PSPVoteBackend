@@ -74,19 +74,18 @@ export const createVotacion = async (req, res) => {
 
 export const getVotaciones = async (req, res) => {
   try {
-    let where = {};
-
+    const where = {
+      isActive: true
+    };
     if (req.user.role === "LIDER") {
       if (!req.user.leaderId) {
         return res.status(403).json({ error: "Líder sin asignación" });
       }
 
-      where = {
-        OR: [
-          { leaderId: req.user.leaderId },
-          { digitadorId: req.user.userId }
-        ]
-      };
+      where.OR = [
+        { leaderId: req.user.leaderId },
+        { digitadorId: req.user.userId }
+      ];
     }
 
     const votaciones = await prisma.votacion.findMany({
@@ -468,9 +467,9 @@ export const toggleVotacionStatus = async (req, res) => {
   }
 
   // Seguridad
-  if (role !== "ADMIN" && votacion.leaderId !== leaderId) {
-    return res.status(403).json({ error: "No autorizado" })
-  }
+  
+
+ 
 
   const newStatus = !votacion.isActive
   const action = newStatus ? "ACTIVAR" : "DESACTIVAR"
