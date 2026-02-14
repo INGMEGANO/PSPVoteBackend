@@ -871,6 +871,7 @@ export const exportPdfPorLider = async (req, res) => {
   try {
     const formato = req.query.formato || "A4";
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
 
     // 1️⃣ Traer líderes con sus votaciones
     const lideres = await prisma.leader.findMany({
@@ -918,6 +919,7 @@ export const exportPdfPorLider = async (req, res) => {
 export const exportZipPorLider = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
     const formato = req.query.formato || "A4";
 
     const lideres = await prisma.leader.findMany({
@@ -972,6 +974,7 @@ export const exportZipPorLider = async (req, res) => {
 export const exportExcelPorLider = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
 
     const lideres = await prisma.leader.findMany({
       where: { isActive: true },
@@ -1135,6 +1138,7 @@ function generarHtmlReportePorPuesto(puestos) {
 export const exportPdfPorPuesto = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
     const formato = req.query.formato || "A4";
 
     // Traer todos los puestos
@@ -1188,6 +1192,7 @@ export const exportPdfPorPuesto = async (req, res) => {
 export const exportZipPorPuesto = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
     const formato = req.query.formato || "A4";
 
     // Traer todos los puestos
@@ -1252,6 +1257,7 @@ export const exportZipPorPuesto = async (req, res) => {
 export const exportExcelPorPuesto = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
 
     // 🔹 Traer todos los puestos
     const puestosDb = await prisma.puestoVotacion.findMany({
@@ -1403,6 +1409,7 @@ function generarHtmlReportePorPrograma(programas, puestosMap) {
 export const exportPdfPorPrograma = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
     const formato = req.query.formato || "A4";
 
     // Traer todas las votaciones
@@ -1447,6 +1454,7 @@ export const exportPdfPorPrograma = async (req, res) => {
 export const exportZipPorPrograma = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
     const formato = req.query.formato || "A4";
 
     const votaciones = await prisma.votacion.findMany({
@@ -1502,7 +1510,7 @@ export const exportZipPorPrograma = async (req, res) => {
 export const exportExcelPorPrograma = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
-
+    where.isActive = true;
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
@@ -1681,7 +1689,7 @@ export const exportPdfGeneral = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
     const formato = req.query.formato || "A4";
-
+    where.isActive = true;
     // Traer votaciones
     const votaciones = await prisma.votacion.findMany({
       where,
@@ -1722,6 +1730,7 @@ export const exportZipGeneral = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
     const formato = req.query.formato || "A4";
+    where.isActive = true;
 
     const votaciones = await prisma.votacion.findMany({
       where,
@@ -1766,7 +1775,7 @@ export const exportZipGeneral = async (req, res) => {
 export const exportExcelGeneral = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
-
+    where.isActive = true;
     const votaciones = await prisma.votacion.findMany({
       where,
       include: {
@@ -1875,6 +1884,7 @@ function generarHtmlReporteCedulas(votaciones, puestosMap, modo = "cedulas") {
 export const exportPdfCedulas = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
     const modo = req.query.modo || "cedulas";
 
     const votaciones = await prisma.votacion.findMany({
@@ -1918,6 +1928,7 @@ export const exportPdfCedulas = async (req, res) => {
 export const exportZipCedulas = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
     const modo = req.query.modo || "cedulas";
 
     const votaciones = await prisma.votacion.findMany({
@@ -1965,6 +1976,7 @@ export const exportZipCedulas = async (req, res) => {
 export const exportExcelCedulas = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
+    where.isActive = true;
     const modo = req.query.modo || "cedulas";
 
     const votaciones = await prisma.votacion.findMany({
