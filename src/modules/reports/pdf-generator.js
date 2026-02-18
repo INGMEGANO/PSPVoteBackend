@@ -128,7 +128,7 @@ export const generarPdfPorLider = (liderData, puestosMap, formato = "A4") => {
         doc.moveDown();
 
         // Tabla
-        const columnas = ["#", "Cédula", "Nombre", "Teléfono", "Dirección", "Barrio", "Puesto", "Programa", "Tipo", "Fecha"];
+        const columnas = ["#", "Cédula", "Nombre", "Teléfono", "Dirección", "Barrio", "Puesto", "Programa", "Fecha"];
         const pageWidth = doc.page.width;
         const colWidth = (pageWidth - 30) / columnas.length;
         const rowHeight = 18;
@@ -165,7 +165,7 @@ export const generarPdfPorLider = (liderData, puestosMap, formato = "A4") => {
             v.barrio || "",
             puesto,
             v.programa?.nombre || "",
-            v.tipo?.nombre || "",
+            
             new Date(v.createdAt).toLocaleDateString("es-CO"),
           ];
 
@@ -214,7 +214,7 @@ export const generarPdfPorPuesto = (puestoData, puestosMap, formato = "A4") => {
         doc.moveDown();
 
         // Tabla
-        const columnas = ["#", "Cédula", "Nombre", "Líder", "Puesto", "Tipo", "Fecha"];
+        const columnas = ["#", "Cédula", "Nombre", "Líder", "Puesto", "Fecha"];
         const pageWidth = doc.page.width;
         const colWidth = (pageWidth - 30) / columnas.length;
         const rowHeight = 16;
@@ -242,7 +242,7 @@ export const generarPdfPorPuesto = (puestoData, puestosMap, formato = "A4") => {
             nombre,
             v.leader?.name || "",
             nombrePuesto,
-            v.tipo?.nombre || "",
+            
             v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-CO") : "",
           ];
 
@@ -294,7 +294,7 @@ export const generarPdfPorPrograma = (programaData, puestosMap, formato = "A4") 
         doc.moveDown();
 
         // Tabla
-        const columnas = ["#", "Cédula", "Nombre", "Líder", "Puesto", "Tipo", "Fecha"];
+        const columnas = ["#", "Cédula", "Nombre", "Líder", "Puesto", "Fecha"];
         const pageWidth = doc.page.width;
         const colWidth = (pageWidth - 30) / columnas.length;
         const rowHeight = 16;
@@ -326,7 +326,7 @@ export const generarPdfPorPrograma = (programaData, puestosMap, formato = "A4") 
             nombre,
             v.leader?.name || "",
             puesto,
-            v.tipo?.nombre || "",
+            
             new Date(v.createdAt).toLocaleDateString("es-CO"),
           ];
 
@@ -374,7 +374,7 @@ export const generarPdfReporteGeneral = (votaciones, puestosMap, formato = "A4")
       // Columnas
       const columnas = [
         "#", "Cédula", "Nombre", "Teléfono", "Dirección", 
-        "Barrio", "Puesto", "Programa", "Tipo", "Fecha"
+        "Barrio", "Puesto", "Programa", "Fecha"
       ];
 
       const pageWidth = doc.page.width;
@@ -409,7 +409,7 @@ export const generarPdfReporteGeneral = (votaciones, puestosMap, formato = "A4")
           v.barrio || "",
           puesto,
           v.programa?.nombre || "",
-          v.tipo?.nombre || "",
+          
           new Date(v.createdAt).toLocaleDateString("es-CO"),
         ];
 
@@ -463,7 +463,7 @@ export const generarPdfCedulas = (votaciones, puestosMap, modo = "cedulas") => {
 
       // Columnas
       const columnas = [
-        "#", "Cédula", "Nombre completo", "Puesto", "Programa", "Tipo"
+        "#", "Cédula", "Nombre completo", "Puesto", "Programa"
       ];
 
       const pageWidth = doc.page.width;
@@ -495,7 +495,7 @@ export const generarPdfCedulas = (votaciones, puestosMap, modo = "cedulas") => {
           nombre,
           puesto,
           v.programa?.nombre || "",
-          v.tipo?.nombre || "",
+          
         ];
 
         datosFila.forEach((dato, i) => {
@@ -605,3 +605,112 @@ export const generarPdfConfirmados = (votaciones, puestosMap) => {
     }
   });
 };
+
+
+export const generarPdfReportePorBarrio = (votaciones, puestosMap, formato = "A4") => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: formato === "oficio" ? [612, 792] : "A4",
+        margin: 15,
+      });
+
+      const chunks = [];
+      doc.on("data", chunk => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+
+      // 🔹 Ordenar por barrio y programa
+      votaciones.sort((a, b) => {
+        const barrioA = a.barrio || "";
+        const barrioB = b.barrio || "";
+        if (barrioA !== barrioB) return barrioA.localeCompare(barrioB);
+
+        const progA = a.programa?.nombre || "";
+        const progB = b.programa?.nombre || "";
+        return progA.localeCompare(progB);
+      });
+
+      // 🔹 Agrupar solo por barrio
+      const agrupado = {};
+      votaciones.forEach(v => {
+        const barrio = v.barrio || "SIN BARRIO";
+        if (!agrupado[barrio]) agrupado[barrio] = [];
+        agrupado[barrio].push(v);
+      });
+
+      doc.fontSize(16).font("Helvetica-Bold")
+        .text("Reporte por Barrio", { align: "center" });
+
+      const columnas = [
+        "#", "Cédula", "Nombre", "Dirección", "Programa", "Puesto"
+      ];
+
+      const pageWidth = doc.page.width;
+      const colWidth = (pageWidth - 30) / columnas.length;
+      const rowHeight = 18;
+
+      Object.keys(agrupado).forEach(barrio => {
+
+        doc.addPage();
+
+        doc.fontSize(14).font("Helvetica-Bold")
+          .text(`Barrio: ${barrio}`);
+
+        let currentY = doc.y + 10;
+
+        // Header tabla
+        doc.fontSize(8).font("Helvetica-Bold");
+        columnas.forEach((col, i) => {
+          doc.text(col, 15 + i * colWidth, currentY, {
+            width: colWidth - 2,
+            align: "center",
+            truncate: true
+          });
+        });
+
+        currentY += rowHeight;
+        doc.font("Helvetica").fontSize(7);
+
+        agrupado[barrio].forEach((v, idx) => {
+
+          if (currentY + rowHeight > doc.page.height - 20) {
+            doc.addPage();
+            currentY = 20;
+          }
+
+          const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+          const puesto = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+          const fila = [
+            idx + 1,
+            v.cedula || "",
+            nombre,
+            v.direccion || "",
+            v.programa?.nombre || "",
+            puesto
+          ];
+
+          fila.forEach((dato, i) => {
+            doc.text(String(dato).substring(0, 25),
+              15 + i * colWidth,
+              currentY,
+              {
+                width: colWidth - 2,
+                align: "center",
+                truncate: true
+              }
+            );
+          });
+
+          currentY += rowHeight;
+        });
+      });
+
+      doc.end();
+
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+

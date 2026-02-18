@@ -11,7 +11,7 @@ import path from "path";
 import archiver from "archiver";
 
 
-import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma, generarPdfReporteGeneral, generarPdfCedulas, generarPdfConfirmados } from "./pdf-generator.js";
+import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma, generarPdfReporteGeneral, generarPdfCedulas, generarPdfConfirmados, generarPdfReportePorBarrio } from "./pdf-generator.js";
 
 
 
@@ -2129,7 +2129,7 @@ const duplicadas = Object.values(duplicadasMap)
 export const exportPdfCedulasDuplicadasAuditoria = async (req, res) => {
   try {
     const where = buildWhereByRole(req.user);
-
+    where.isActive = true;
     const votaciones = await prisma.votacion.findMany({
       where,
       select: {
@@ -2500,3 +2500,220 @@ export const previewPorLider = async (req, res) => {
     res.status(500).send(`Error: ${error.message}`);
   }
 };
+
+
+export const exportPdfPorBarrio = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    const formato = req.query.formato || "A4";
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        tipo: { select: { nombre: true } },
+        programa: { select: { nombre: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (!votaciones.length) {
+      return res.status(404).json({ error: "No hay datos para exportar" });
+    }
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true }
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    const pdf = await generarPdfReportePorBarrio(votaciones, puestosMap, formato);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_por_barrio.pdf");
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+
+export const exportZipPorBarrio = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        programa: { select: { nombre: true } },
+      },
+      orderBy: [
+        { barrio: "asc" },
+        { programa: { nombre: "asc" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    if (!votaciones.length) {
+      return res.status(404).json({
+        error: "No hay datos para exportar",
+      });
+    }
+
+    // 🔹 Obtener puestos
+    const puestoIds = [
+      ...new Set(votaciones.map(v => v.puestoVotacion).filter(Boolean))
+    ];
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    // 🔥 AGRUPAR POR BARRIO
+    const barriosAgrupados = {};
+
+    for (const v of votaciones) {
+      const barrio = v.barrio || "SIN_BARRIO";
+
+      if (!barriosAgrupados[barrio]) {
+        barriosAgrupados[barrio] = [];
+      }
+
+      barriosAgrupados[barrio].push(v);
+    }
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reportes_por_barrio.zip"
+    );
+
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    // 🔥 GENERAR UN PDF POR CADA BARRIO
+    for (const [barrio, votosBarrio] of Object.entries(barriosAgrupados)) {
+
+      const pdfBuffer = await generarPdfReportePorBarrio(
+        votosBarrio,
+        puestosMap
+      );
+
+      const nombreArchivo = barrio
+        .replace(/\s+/g, "_")
+        .replace(/[^\w]/g, "");
+
+      archive.append(pdfBuffer, {
+        name: `${nombreArchivo}.pdf`,
+      });
+    }
+
+    await archive.finalize();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+
+export const exportExcelPorBarrio = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        programa: { select: { nombre: true } },
+      },
+      orderBy: [
+        { barrio: "asc" },
+        { programa: { nombre: "asc" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    if (!votaciones.length) {
+      return res.status(404).json({
+        error: "No hay datos para exportar",
+      });
+    }
+
+    const puestoIds = [
+      ...new Set(votaciones.map(v => v.puestoVotacion).filter(Boolean))
+    ];
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    const rows = [];
+
+    for (const v of votaciones) {
+
+      const nombreCompleto =
+        `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+
+      const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+      rows.push({
+        Barrio: v.barrio || "",
+        Cedula: v.cedula || "",
+        NombreCompleto: nombreCompleto,
+        Direccion: v.direccion || "",
+        Programa: v.programa?.nombre || "",
+        PuestoVotacion: puestoNombre,
+        FechaRegistro: v.createdAt
+          ? new Date(v.createdAt).toLocaleDateString("es-CO")
+          : "",
+      });
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Votaciones por Barrio");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_votaciones_por_barrio.xlsx"
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.end(buffer);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+
+
+
