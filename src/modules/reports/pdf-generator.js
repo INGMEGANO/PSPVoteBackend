@@ -619,11 +619,15 @@ export const generarPdfReportePorBarrio = (votaciones, puestosMap, formato = "A4
       doc.on("data", chunk => chunks.push(chunk));
       doc.on("end", () => resolve(Buffer.concat(chunks)));
 
-      // 🔹 Ordenar por barrio y programa
+      // 🔹 Ordenar por barrio, tipo y programa
       votaciones.sort((a, b) => {
         const barrioA = a.barrio || "";
         const barrioB = b.barrio || "";
         if (barrioA !== barrioB) return barrioA.localeCompare(barrioB);
+
+        const tipoA = a.tipo?.nombre || "";
+        const tipoB = b.tipo?.nombre || "";
+        if (tipoA !== tipoB) return tipoA.localeCompare(tipoB);
 
         const progA = a.programa?.nombre || "";
         const progB = b.programa?.nombre || "";
@@ -642,7 +646,7 @@ export const generarPdfReportePorBarrio = (votaciones, puestosMap, formato = "A4
         .text("Reporte por Barrio", { align: "center" });
 
       const columnas = [
-        "#", "Cédula", "Nombre", "Dirección", "Programa", "Puesto"
+        "#", "Cédula", "Nombre", "Dirección", "Programa", "Tipo", "Puesto"
       ];
 
       const pageWidth = doc.page.width;
@@ -687,20 +691,42 @@ export const generarPdfReportePorBarrio = (votaciones, puestosMap, formato = "A4
             nombre,
             v.direccion || "",
             v.programa?.nombre || "",
+            v.tipo?.nombre || "SIN TIPO",
             puesto
           ];
 
           fila.forEach((dato, i) => {
-            doc.text(String(dato).substring(0, 25),
-              15 + i * colWidth,
-              currentY,
-              {
-                width: colWidth - 2,
-                align: "center",
-                truncate: true
-              }
-            );
-          });
+
+  const texto = String(dato).substring(0, 25);
+
+  const posX = 15 + i * colWidth;
+
+  // 🔥 Columna "Tipo" es índice 5
+  if (i === 5 && texto.toUpperCase() === "CORAZÓN") {
+
+    doc.fillColor("red")
+       .font("Helvetica-Bold")
+       .text(texto, posX, currentY, {
+          width: colWidth - 2,
+          align: "center",
+          truncate: true
+       });
+
+    // Reset
+    doc.fillColor("black").font("Helvetica");
+
+  } else {
+
+    doc.fillColor("black")
+       .font("Helvetica")
+       .text(texto, posX, currentY, {
+          width: colWidth - 2,
+          align: "center",
+          truncate: true
+       });
+  }
+});
+
 
           currentY += rowHeight;
         });
@@ -728,7 +754,7 @@ export const generarPdfReportePorSede = (
       const esOficio = formato?.toLowerCase().trim() === "oficio";
 
       const doc = new PDFDocument({
-        size: esOficio ? [612, 1008] : "A4", // Oficio real
+        size: esOficio ? [612, 1008] : "A4",
         layout: esOficio ? "landscape" : "portrait",
         margin: esOficio ? 40 : 30,
       });
@@ -738,9 +764,19 @@ export const generarPdfReportePorSede = (
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", err => reject(err));
 
+      // 🔹 Ordenar por tipo y líder
+      votaciones.sort((a, b) => {
+        const tipoA = a.tipo?.nombre || "";
+        const tipoB = b.tipo?.nombre || "";
+        if (tipoA !== tipoB) return tipoA.localeCompare(tipoB);
+
+        const liderA = a.leader?.name || "";
+        const liderB = b.leader?.name || "";
+        return liderA.localeCompare(liderB);
+      });
+
       const rowHeight = esOficio ? 24 : 18;
 
-      // 🔥 TÍTULO
       doc
         .fontSize(esOficio ? 18 : 16)
         .font("Helvetica-Bold")
@@ -757,6 +793,7 @@ export const generarPdfReportePorSede = (
         "Dirección",
         "Barrio",
         "Programa",
+        "Tipo",
         "Puesto",
       ];
 
@@ -765,16 +802,16 @@ export const generarPdfReportePorSede = (
         doc.page.margins.left -
         doc.page.margins.right;
 
-      // 🔥 Columnas proporcionales para OFICIO
       let colWidths;
 
       if (esOficio) {
         colWidths = [
           usableWidth * 0.05,
-          usableWidth * 0.12,
-          usableWidth * 0.18,
-          usableWidth * 0.18,
-          usableWidth * 0.12,
+          usableWidth * 0.10,
+          usableWidth * 0.15,
+          usableWidth * 0.15,
+          usableWidth * 0.10,
+          usableWidth * 0.10,
           usableWidth * 0.15,
           usableWidth * 0.20,
         ];
@@ -808,7 +845,6 @@ export const generarPdfReportePorSede = (
 
       votaciones.forEach((v) => {
 
-        // 🔥 Cambio de líder
         if (liderActual !== v.leader?.name) {
 
           if (currentY + rowHeight > doc.page.height - 40) {
@@ -846,23 +882,43 @@ export const generarPdfReportePorSede = (
           v.direccion || "",
           v.barrio || "",
           v.programa?.nombre || "",
+          v.tipo?.nombre || "SIN TIPO",
           puestosMap[v.puestoVotacion] || "SIN PUESTO",
         ];
 
         let x = doc.page.margins.left;
 
         fila.forEach((dato, i) => {
-          doc.text(
-            String(dato).substring(0, esOficio ? 60 : 40),
-            x,
-            currentY,
-            {
-              width: colWidths[i] - 4,
-              align: "center",
-            }
-          );
+
+          const texto = String(dato).substring(0, esOficio ? 60 : 40);
+
+          // 🔥 Si es la columna "Tipo" (posición 6) y dice CORAZÓN
+          if (i === 6 && texto.toUpperCase() === "CORAZÓN") {
+
+            doc.fillColor("red")
+              .font("Helvetica-Bold")
+              .text(texto, x, currentY, {
+                  width: colWidths[i] - 4,
+                  align: "center",
+              });
+
+            // 🔄 Resetear para que no afecte lo demás
+            doc.fillColor("black")
+              .font("Helvetica");
+
+          } else {
+
+            doc.fillColor("black")
+              .font("Helvetica")
+              .text(texto, x, currentY, {
+                  width: colWidths[i] - 4,
+                  align: "center",
+              });
+          }
+
           x += colWidths[i];
         });
+
 
         currentY += rowHeight;
       });
@@ -883,4 +939,5 @@ export const generarPdfReportePorSede = (
     }
   });
 };
+
 

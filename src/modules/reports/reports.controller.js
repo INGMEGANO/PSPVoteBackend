@@ -2513,7 +2513,8 @@ export const exportPdfPorBarrio = async (req, res) => {
         tipo: { select: { nombre: true } },
         programa: { select: { nombre: true } },
       },
-      orderBy: { createdAt: "asc" },
+      
+      orderBy: { tipo: "asc" },
     });
 
     if (!votaciones.length) {
@@ -2551,10 +2552,12 @@ export const exportZipPorBarrio = async (req, res) => {
       where,
       include: {
         programa: { select: { nombre: true } },
+        tipo: { select: { nombre: true } },
       },
       orderBy: [
         { barrio: "asc" },
         { programa: { nombre: "asc" } },
+        { tipo: { nombre: "asc" } },
         { createdAt: "asc" },
       ],
     });
@@ -2729,10 +2732,12 @@ export const exportPdfPorSede = async (req, res) => {
       include: {
         leader: { select: { name: true } },
         programa: { select: { nombre: true } },
+        tipo: { select: { nombre: true } },
         sede: { select: { nombre: true } },
       },
       orderBy: [
         { leader: { name: "asc" } },
+        { tipo: { nombre: "asc" } },
         { createdAt: "asc" },
       ],
     });
@@ -2792,10 +2797,12 @@ export const exportZipPorSede = async (req, res) => {
         leader: { select: { name: true } },
         programa: { select: { nombre: true } },
         sede: { select: { nombre: true } },
+        tipo: { select: { nombre: true } },
       },
       orderBy: [
         { sede: { nombre: "asc" } },
         { leader: { name: "asc" } },
+        { tipo: { nombre: "asc" } },
         { createdAt: "asc" },
       ],
     });
@@ -2891,11 +2898,13 @@ export const exportExcelPorSede = async (req, res) => {
       include: {
         leader: { select: { name: true } },
         programa: { select: { nombre: true } },
+        tipo: { select: { nombre: true } },
         sede: { select: { nombre: true } },
       },
       orderBy: [
         { sede: { nombre: "asc" } },
         { leader: { name: "asc" } },
+        { tipo: { nombre: "asc" } },
         { createdAt: "asc" },
       ],
     });
