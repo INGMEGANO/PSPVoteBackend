@@ -11,7 +11,7 @@ import path from "path";
 import archiver from "archiver";
 
 
-import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma, generarPdfReporteGeneral, generarPdfCedulas, generarPdfConfirmados, generarPdfReportePorBarrio } from "./pdf-generator.js";
+import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma, generarPdfReporteGeneral, generarPdfCedulas, generarPdfConfirmados, generarPdfReportePorBarrio, generarPdfReportePorSede } from "./pdf-generator.js";
 
 
 
@@ -2712,6 +2712,250 @@ export const exportExcelPorBarrio = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+
+export const exportPdfPorSede = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+
+    const formato =
+      req.query.formato?.toLowerCase().trim() === "oficio"
+        ? "oficio"
+        : "A4";
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        programa: { select: { nombre: true } },
+        sede: { select: { nombre: true } },
+      },
+      orderBy: [
+        { leader: { name: "asc" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    if (!votaciones.length) {
+      return res.status(404).json({ error: "No hay datos para exportar" });
+    }
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      select: { id: true, puesto: true },
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    // 🔥 Aquí está la clave
+    const sedeNombre =
+      votaciones[0]?.sede?.nombre || "SIN SEDE";
+
+    const pdf = await generarPdfReportePorSede(
+      votaciones,
+      puestosMap,
+      sedeNombre,
+      formato
+    );
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_por_sede.pdf"
+    );
+
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+
+export const exportZipPorSede = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+
+    const formato =
+      req.query.formato?.toLowerCase().trim() === "oficio"
+        ? "oficio"
+        : "A4";
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        programa: { select: { nombre: true } },
+        sede: { select: { nombre: true } },
+      },
+      orderBy: [
+        { sede: { nombre: "asc" } },
+        { leader: { name: "asc" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    if (!votaciones.length) {
+      return res.status(404).json({ error: "No hay datos para exportar" });
+    }
+
+    const puestoIds = [
+      ...new Set(
+        votaciones.map(v => v.puestoVotacion).filter(Boolean)
+      ),
+    ];
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    // 🔥 AGRUPAR POR SEDE Y LÍDER
+    const agrupado = {};
+
+    for (const v of votaciones) {
+      const sedeNombre = v.sede?.nombre || "SIN_SEDE";
+      const liderNombre = v.leader?.name || "SIN_LIDER";
+
+      if (!agrupado[sedeNombre]) {
+        agrupado[sedeNombre] = {};
+      }
+
+      if (!agrupado[sedeNombre][liderNombre]) {
+        agrupado[sedeNombre][liderNombre] = [];
+      }
+
+      agrupado[sedeNombre][liderNombre].push(v);
+    }
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_por_sede.zip"
+    );
+
+    const archive = archiver("zip", {
+      zlib: { level: 9 },
+    });
+
+    archive.pipe(res);
+
+    // 🔥 GENERAR PDF POR SEDE + LÍDER
+    for (const sede in agrupado) {
+      for (const lider in agrupado[sede]) {
+
+        const nombreArchivo = `REPORTE_${sede}_${lider}`
+          .replace(/\s+/g, "_")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        const pdfBuffer = await generarPdfReportePorSede(
+          agrupado[sede][lider],
+          puestosMap,
+          `${sede} - ${lider}`,
+          formato
+        );
+
+        archive.append(pdfBuffer, {
+          name: `${nombreArchivo}.pdf`,
+        });
+      }
+    }
+
+    await archive.finalize();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+
+export const exportExcelPorSede = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+
+    const votaciones = await prisma.votacion.findMany({
+      where,
+      include: {
+        leader: { select: { name: true } },
+        programa: { select: { nombre: true } },
+        sede: { select: { nombre: true } },
+      },
+      orderBy: [
+        { sede: { nombre: "asc" } },
+        { leader: { name: "asc" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    // 🔥 Construcción segura de filas
+    const rows = votaciones.map(v => ({
+      "SEDE": v.sede?.nombre || "SIN_SEDE",
+      "LÍDER": v.leader?.name || "SIN_LIDER",
+      "CÉDULA": v.cedula || "",
+      "NOMBRE COMPLETO": `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim(),
+      "TELÉFONO": v.telefono || "",
+      "DIRECCIÓN": v.direccion || "",
+      "BARRIO": v.barrio || "",
+      "PROGRAMA": v.programa?.nombre || "",
+      "FECHA REGISTRO": v.createdAt
+        ? new Date(v.createdAt).toLocaleDateString("es-CO")
+        : "",
+    }));
+
+    // 🔥 Forzar orden exacto de columnas
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: [
+        "SEDE",
+        "LÍDER",
+        "CÉDULA",
+        "NOMBRE COMPLETO",
+        "TELÉFONO",
+        "DIRECCIÓN",
+        "BARRIO",
+        "PROGRAMA",
+        "FECHA REGISTRO",
+      ],
+    });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "ReportePorSede");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_por_sede.xlsx"
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.end(buffer);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 
 
 

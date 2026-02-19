@@ -32,6 +32,9 @@ import {
   exportPdfPorBarrio,
   exportZipPorBarrio,
   exportExcelPorBarrio,
+  exportPdfPorSede,
+  exportZipPorSede,
+  exportExcelPorSede,
   previewPorLider
 } from "./reports.controller.js"
 
@@ -86,6 +89,9 @@ router.get("/dashboard/exportpdfporbarrio", exportPdfPorBarrio);
 router.get("/dashboard/exportzippdfbarrio", exportZipPorBarrio); 
 router.get("/dashboard/exportexcelbarrio", exportExcelPorBarrio); 
 
+router.get("/dashboard/exportpdfporsede", exportPdfPorSede);
+router.get("/dashboard/exportzippdfsede", exportZipPorSede); 
+router.get("/dashboard/exportexcelsede", exportExcelPorSede); 
 
 router.get("/dashboard/exportpdfconfirmados", exportPdfConfirmados);
 router.get("/dashboard/exportzipconfirmados", exportZipConfirmados);

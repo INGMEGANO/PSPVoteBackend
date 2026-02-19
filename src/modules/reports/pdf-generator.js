@@ -714,3 +714,173 @@ export const generarPdfReportePorBarrio = (votaciones, puestosMap, formato = "A4
   });
 };
 
+
+
+export const generarPdfReportePorSede = (
+  votaciones,
+  puestosMap,
+  sedeNombre,
+  formato = "A4"
+) => {
+  return new Promise((resolve, reject) => {
+    try {
+
+      const esOficio = formato?.toLowerCase().trim() === "oficio";
+
+      const doc = new PDFDocument({
+        size: esOficio ? [612, 1008] : "A4", // Oficio real
+        layout: esOficio ? "landscape" : "portrait",
+        margin: esOficio ? 40 : 30,
+      });
+
+      const chunks = [];
+      doc.on("data", chunk => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", err => reject(err));
+
+      const rowHeight = esOficio ? 24 : 18;
+
+      // 🔥 TÍTULO
+      doc
+        .fontSize(esOficio ? 18 : 16)
+        .font("Helvetica-Bold")
+        .text(`REPORTE POR SEDE: ${sedeNombre}`, {
+          align: "center",
+        });
+
+      doc.moveDown(1.5);
+
+      const columnas = [
+        "#",
+        "Cédula",
+        "Nombre",
+        "Dirección",
+        "Barrio",
+        "Programa",
+        "Puesto",
+      ];
+
+      const usableWidth =
+        doc.page.width -
+        doc.page.margins.left -
+        doc.page.margins.right;
+
+      // 🔥 Columnas proporcionales para OFICIO
+      let colWidths;
+
+      if (esOficio) {
+        colWidths = [
+          usableWidth * 0.05,
+          usableWidth * 0.12,
+          usableWidth * 0.18,
+          usableWidth * 0.18,
+          usableWidth * 0.12,
+          usableWidth * 0.15,
+          usableWidth * 0.20,
+        ];
+      } else {
+        const equal = usableWidth / columnas.length;
+        colWidths = Array(columnas.length).fill(equal);
+      }
+
+      let currentY = doc.y;
+      let liderActual = null;
+      let contador = 0;
+
+      const dibujarEncabezado = () => {
+        let x = doc.page.margins.left;
+
+        doc.fontSize(esOficio ? 10 : 9).font("Helvetica-Bold");
+
+        columnas.forEach((col, i) => {
+          doc.text(col, x, currentY, {
+            width: colWidths[i] - 4,
+            align: "center",
+          });
+          x += colWidths[i];
+        });
+
+        currentY += rowHeight;
+        doc.font("Helvetica").fontSize(esOficio ? 9 : 8);
+      };
+
+      dibujarEncabezado();
+
+      votaciones.forEach((v) => {
+
+        // 🔥 Cambio de líder
+        if (liderActual !== v.leader?.name) {
+
+          if (currentY + rowHeight > doc.page.height - 40) {
+            doc.addPage();
+            currentY = doc.page.margins.top;
+            dibujarEncabezado();
+          }
+
+          liderActual = v.leader?.name || "SIN LIDER";
+
+          doc
+            .fontSize(esOficio ? 11 : 10)
+            .font("Helvetica-Bold")
+            .text(`LÍDER: ${liderActual}`, doc.page.margins.left, currentY);
+
+          currentY += rowHeight;
+          doc.font("Helvetica").fontSize(esOficio ? 9 : 8);
+        }
+
+        if (currentY + rowHeight > doc.page.height - 40) {
+          doc.addPage();
+          currentY = doc.page.margins.top;
+          dibujarEncabezado();
+        }
+
+        contador++;
+
+        const nombreCompleto =
+          `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+
+        const fila = [
+          contador,
+          v.cedula || "",
+          nombreCompleto,
+          v.direccion || "",
+          v.barrio || "",
+          v.programa?.nombre || "",
+          puestosMap[v.puestoVotacion] || "SIN PUESTO",
+        ];
+
+        let x = doc.page.margins.left;
+
+        fila.forEach((dato, i) => {
+          doc.text(
+            String(dato).substring(0, esOficio ? 60 : 40),
+            x,
+            currentY,
+            {
+              width: colWidths[i] - 4,
+              align: "center",
+            }
+          );
+          x += colWidths[i];
+        });
+
+        currentY += rowHeight;
+      });
+
+      doc.moveDown(2);
+
+      doc
+        .fontSize(esOficio ? 12 : 11)
+        .font("Helvetica-Bold")
+        .text(`TOTAL REGISTROS: ${votaciones.length}`, {
+          align: "right",
+        });
+
+      doc.end();
+
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
