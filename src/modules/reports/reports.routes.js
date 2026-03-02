@@ -35,7 +35,8 @@ import {
   exportPdfPorSede,
   exportZipPorSede,
   exportExcelPorSede,
-  previewPorLider
+  previewPorLider,
+  exportPdfPorLiderSinBloqueoCedulas, exportZipPorLiderSinBloqueoCedulas, exportExcelPorLiderSinBloqueoCedulas
 } from "./reports.controller.js"
 
 import { authMiddleware } from "../../middlewares/auth.middleware.js"
@@ -54,10 +55,16 @@ router.get("/dashboard/detalle", dashboardDetalle);
 router.get("/dashboard/resumen", dashboardResumen); 
 router.get("/dashboard/export", exportDashboard);
 router.get("/dashboard/exportxls", exportDashboardXLSX);
+
 router.get("/dashboard/exportpdf", exportPdfPorLider);
 router.get("/dashboard/exportzippdf", exportZipPorLider);
 router.get("/dashboard/exportexcel", exportExcelPorLider); 
 router.get("/dashboard/exportzippdf", exportZipPorLider);
+
+
+router.get("/dashboard/exportpdfporlidersinbloqueocedulas", exportPdfPorLiderSinBloqueoCedulas);
+router.get("/dashboard/exportzipporlidersinbloqueocedulas", exportZipPorLiderSinBloqueoCedulas);
+router.get("/dashboard/exportexcelporlidersinbloqueocedulas", exportExcelPorLiderSinBloqueoCedulas);
 
 router.get("/dashboard/exportpdfporpuesto", exportPdfPorPuesto);
 //router.get("/dashboard/exportzippdfporpuesto", exportZipPorPuesto);

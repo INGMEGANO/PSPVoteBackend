@@ -115,3 +115,167 @@ export const validarCedulasExcel = async (req, res) => {
     res.status(500).json({ error: "Error procesando el Excel" });
   }
 };
+
+
+export async function importarExcelCedulas(file) {
+
+  const workbook = new ExcelJS.Workbook();
+
+  // 🔥 cargar desde memoria
+  await workbook.xlsx.load(file.buffer);
+
+  const worksheet = workbook.worksheets[0];
+
+  const existentesDB = await prisma.cedulaBloqueada.findMany({
+    select: { cedula: true }
+  });
+
+  const setExistentes = new Set(
+    existentesDB.map(e => e.cedula)
+  );
+
+  const nuevas = [];
+
+  for (let i = 2; i <= worksheet.rowCount; i++) {
+
+    const row = worksheet.getRow(i);
+    const cedulaRaw = row.getCell(1).value;
+
+    if (!cedulaRaw) continue;
+
+    const cedula = String(cedulaRaw)
+      .replace(/\./g, "")
+      .replace(/-/g, "")
+      .trim();
+
+    if (!setExistentes.has(cedula)) {
+      nuevas.push({ cedula });
+    }
+  }
+
+  const chunkSize = 1000;
+
+  for (let i = 0; i < nuevas.length; i += chunkSize) {
+    const chunk = nuevas.slice(i, i + chunkSize);
+
+    await prisma.cedulaBloqueada.createMany({
+      data: chunk,
+      skipDuplicates: true
+    });
+  }
+
+  return {
+    totalExcel: worksheet.rowCount - 1,
+    nuevasInsertadas: nuevas.length,
+    yaExistian: worksheet.rowCount - 1 - nuevas.length
+  };
+}
+
+export const importarCedulasController = async (req, res) => {
+  try {
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No se subió archivo" });
+    }
+
+    // 🔥 CAMBIO AQUÍ
+    const resultado = await importarExcelCedulas(req.file);
+
+    return res.json({
+      ok: true,
+      ...resultado
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Error importando Excel" });
+  }
+};
+
+export const getCedulasBloqueadas = async (req, res) => {
+  try {
+
+    // 1️⃣ Traer bloqueadas
+    const bloqueadas = await prisma.cedulaBloqueada.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+
+    const cedulas = bloqueadas.map(b => b.cedula);
+
+    if (!cedulas.length) {
+      return res.json([]);
+    }
+
+    // 2️⃣ Traer votaciones relacionadas
+    const votaciones = await prisma.votacion.findMany({
+      where: {
+        cedula: { in: cedulas }
+      },
+      include: {
+        leader: { select: { name: true } },
+        programa: { select: { nombre: true } },
+        tipo: { select: { nombre: true } },
+      }
+    });
+
+    // 3️⃣ Unir información
+    const resultado = bloqueadas.map(b => {
+
+      const voto = votaciones.find(v => v.cedula === b.cedula);
+
+      return {
+        id: b.id,
+        cedula: b.cedula,
+        activa: b.activa,
+        override: b.override,
+        createdAt: b.createdAt,
+
+        // Datos del votante si existen
+        nombre: voto
+          ? `${voto.nombre1} ${voto.nombre2 || ""} ${voto.apellido1} ${voto.apellido2 || ""}`.trim()
+          : null,
+
+        telefono: voto?.telefono || null,
+        direccion: voto?.direccion || null,
+        barrio: voto?.barrio || null,
+        lider: voto?.leader?.name || null,
+        programa: voto?.programa?.nombre || null,
+        tipo: voto?.tipo?.nombre || null,
+      };
+    });
+
+    res.json(resultado);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const toggleCedulaBloqueada = async (req, res) => {
+  try {
+
+    const { id } = req.params;
+
+    const cedula = await prisma.cedulaBloqueada.findUnique({
+      where: { id }
+    });
+
+    if (!cedula) {
+      return res.status(404).json({ error: "No encontrada" });
+    }
+
+    const actualizada = await prisma.cedulaBloqueada.update({
+      where: { id },
+      data: {
+        activa: !cedula.activa
+      }
+    });
+
+    res.json(actualizada);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};

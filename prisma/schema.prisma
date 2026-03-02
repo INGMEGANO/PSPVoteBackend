@@ -231,3 +231,16 @@ model VotacionConfirmacion {
 
   createdAt DateTime @default(now())
 }
+
+
+model CedulaBloqueada {
+  id        String   @id @default(uuid())
+  cedula    String   @unique
+  activa    Boolean  @default(true)
+
+  // Permitir manualmente aunque esté en Excel
+  override  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

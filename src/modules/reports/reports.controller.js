@@ -11,7 +11,9 @@ import path from "path";
 import archiver from "archiver";
 
 
-import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma, generarPdfReporteGeneral, generarPdfCedulas, generarPdfConfirmados, generarPdfReportePorBarrio, generarPdfReportePorSede } from "./pdf-generator.js";
+import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma, generarPdfReporteGeneral, generarPdfCedulas, generarPdfConfirmados, generarPdfReportePorBarrio, generarPdfReportePorSede,
+  generarPdfPorLiderSinBloqueoCedulas
+ } from "./pdf-generator.js";
 
 
 
@@ -1027,7 +1029,7 @@ export const exportExcelPorLider = async (req, res) => {
           PuestoVotacion: puestoNombre || "",
           Programa: v.programa?.nombre || "",
           Tipo: v.tipo?.nombre || "",
-          Pago: pago,
+          //Pago: pago,
           FechaRegistro: v.createdAt
             ? new Date(v.createdAt).toLocaleDateString("es-CO")
             : "",
@@ -1060,6 +1062,272 @@ export const exportExcelPorLider = async (req, res) => {
   }
 };
 
+
+export const exportPdfPorLiderSinBloqueoCedulas = async (req, res) => {
+  try {
+    const formato = req.query.formato || "A4";
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+
+    const lideres = await prisma.leader.findMany({
+      where: { isActive: true },
+      include: {
+        votaciones: {
+          where,
+          include: {
+            tipo: { select: { nombre: true } },
+            programa: { select: { nombre: true } },
+            digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } }
+            
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const bloqueadas = await prisma.cedulaBloqueada.findMany({
+      where: {
+        activa: true,
+        override: false
+      },
+      select: { cedula: true }
+    });
+
+    const setBloqueadas = new Set(
+      bloqueadas.map(b => b.cedula)
+    );
+
+    const puestoIds = [
+      ...new Set(
+        lideres.flatMap(l => l.votaciones.map(v => v.puestoVotacion).filter(Boolean))
+      )
+    ];
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true }
+    });
+
+    const puestosMap = {};
+    puestosDb.forEach(p => { puestosMap[p.id] = p.puesto; });
+
+    // 👇 SOLO CAMBIA ESTA LÍNEA
+    // 🔥 Filtrar votaciones bloqueadas
+    const lideresFiltrados = lideres.map(lider => ({
+      ...lider,
+      votaciones: lider.votaciones.filter(v => !setBloqueadas.has(v.cedula))
+    }));
+
+    const pdf = await generarPdfPorLiderSinBloqueoCedulas(lideresFiltrados, puestosMap, formato);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_por_lider_sin_bloqueadas.pdf");
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportZipPorLiderSinBloqueoCedulas = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+    const formato = req.query.formato || "A4";
+
+    const lideres = await prisma.leader.findMany({
+      where: { isActive: true },
+      include: {
+        votaciones: {
+          where,
+          include: {
+            tipo: { select: { nombre: true } },
+            programa: { select: { nombre: true } },
+            digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    // 🔥 TRAER BLOQUEADAS
+    const bloqueadas = await prisma.cedulaBloqueada.findMany({
+      where: {
+        activa: true,
+        override: false,
+      },
+      select: { cedula: true },
+    });
+
+    const setBloqueadas = new Set(
+      bloqueadas.map(b => b.cedula)
+    );
+
+    // 🔥 FILTRAR
+    const lideresFiltrados = lideres.map(lider => ({
+      ...lider,
+      votaciones: lider.votaciones.filter(v => !setBloqueadas.has(v.cedula))
+    }));
+
+    // 🔥 PUESTOS
+    const puestoIds = [...new Set(
+      lideresFiltrados.flatMap(l => l.votaciones.map(v => v.puestoVotacion).filter(Boolean))
+    )];
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_por_lider_sin_bloqueadas.zip");
+
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    for (const lider of lideresFiltrados) {
+
+      if (!lider.votaciones.length) continue;
+
+      const pdf = await generarPdfPorLiderSinBloqueoCedulas(
+        [lider],
+        puestosMap,
+        formato
+      );
+
+      archive.append(pdf, {
+        name: `reporte_lider_${lider.name.replace(/\s+/g, "_").toLowerCase()}_sin_bloqueadas.pdf`,
+      });
+    }
+
+    await archive.finalize();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportExcelPorLiderSinBloqueoCedulas = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+
+    const lideres = await prisma.leader.findMany({
+      where: { isActive: true },
+      include: {
+        votaciones: {
+          where,
+          include: {
+            tipo: { select: { nombre: true } },
+            programa: { select: { nombre: true } },
+            digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    // 🔥 TRAER BLOQUEADAS
+    const bloqueadas = await prisma.cedulaBloqueada.findMany({
+      where: {
+        activa: true,
+        override: false,
+      },
+      select: { cedula: true },
+    });
+
+    const setBloqueadas = new Set(
+      bloqueadas.map(b => b.cedula)
+    );
+
+    // 🔥 PUESTOS
+    const puestoIds = [
+      ...new Set(
+        lideres.flatMap(l =>
+          l.votaciones.map(v => v.puestoVotacion).filter(Boolean)
+        )
+      )
+    ];
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    const rows = [];
+
+    for (const lider of lideres) {
+
+      for (const v of lider.votaciones) {
+
+        // 🔥 FILTRO CLAVE
+        if (setBloqueadas.has(v.cedula)) continue;
+
+        const nombreCompleto =
+          `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+
+        const pago = v.tipo?.nombre === "CORAZÓN" ? "NO" : "SI";
+        const puestoNombre = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+        rows.push({
+          Lider: lider.name,
+          Cedula: v.cedula || "",
+          NombreCompleto: nombreCompleto,
+          Telefono: v.telefono || "",
+          Direccion: v.direccion || "",
+          Barrio: v.barrio || "",
+          PuestoVotacion: puestoNombre,
+          Programa: v.programa?.nombre || "",
+          Tipo: v.tipo?.nombre || "",
+          //Pago: pago,
+          FechaRegistro: v.createdAt
+            ? new Date(v.createdAt).toLocaleDateString("es-CO")
+            : "",
+        });
+      }
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Votaciones");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_votaciones_por_lider_sin_bloqueadas.xlsx"
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.end(buffer);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
 
 
 function generarHtmlReportePorPuesto(puestos) {
