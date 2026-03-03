@@ -389,3 +389,50 @@ export const descargarBackup = (req, res) => {
     res.download(filePath);
   });
 };
+
+
+export const crearReporte = async (req, res) => {
+  try {
+    const { nombre, descripcion, icon, descargas } = req.body;
+
+    const nuevoReporte = await prisma.reporte.create({
+      data: {
+        nombre,
+        descripcion,
+        icon,
+        descargas: {
+          create: descargas
+        }
+      },
+      include: {
+        descargas: true
+      }
+    });
+
+    res.json(nuevoReporte);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const obtenerReportes = async (req, res) => {
+  try {
+
+    const reportes = await prisma.reporte.findMany({
+      include: {
+        descargas: true
+      },
+      orderBy: {
+        id: "asc"
+      }
+    });
+
+    res.json(reportes);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
