@@ -2317,7 +2317,7 @@ export const exportExcelGeneral = async (req, res) => {
         Puesto: puestoNombre,
         Programa: v.programa?.nombre || "",
         Tipo: v.tipo?.nombre || "",
-        Pago: pago,
+        //Pago: pago,
         FechaRegistro: v.createdAt ? new Date(v.createdAt).toLocaleDateString("es-CO") : "",
         Digitador: v.digitador?.username || "",
         RecomendadoPor: v.recommendedBy?.name || "",
