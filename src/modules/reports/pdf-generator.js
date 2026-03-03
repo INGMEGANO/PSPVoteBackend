@@ -287,6 +287,133 @@ export const generarPdfPorLiderSinBloqueoCedulas = (liderData, puestosMap, forma
   });
 };
 
+export const generarPdfPorLiderConfirmadas = async (
+  liderData,
+  puestosMap,
+  prisma,
+  formato = "A4"
+) => {
+
+  // 🔥 1️⃣ Traer todas las cédulas confirmadas activas
+  const confirmadasDB = await prisma.cedulaConfirmada.findMany({
+    where: { activa: true },
+    select: { cedula: true }
+  });
+
+  const setConfirmadas = new Set(
+    confirmadasDB.map(c =>
+      String(c.cedula).replace(/\./g, "").replace(/-/g, "").trim()
+    )
+  );
+
+  return new Promise((resolve, reject) => {
+    try {
+
+      const doc = new PDFDocument({
+        size: formato === "oficio" ? [612, 792] : "A4",
+        margin: 15,
+      });
+
+      const chunks = [];
+
+      doc.on("data", chunk => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      liderData.forEach((lider, idx) => {
+
+        // 🔥 2️⃣ FILTRAR SOLO CONFIRMADAS
+        const votacionesFiltradas = lider.votaciones.filter(v => {
+
+          if (!v.cedula) return false;
+
+          const cedulaNormalizada = String(v.cedula)
+            .replace(/\./g, "")
+            .replace(/-/g, "")
+            .trim();
+
+          return setConfirmadas.has(cedulaNormalizada);
+        });
+
+        if (votacionesFiltradas.length === 0) return;
+
+        if (idx > 0) doc.addPage();
+
+        // Encabezado
+        doc.fontSize(16).font("Helvetica-Bold")
+          .text(`Líder: ${lider.name}`, { align: "center" });
+
+        doc.fontSize(10).font("Helvetica");
+        doc.text(`Recomendado por: ${votacionesFiltradas[0]?.recommendedBy?.name || "N/A"}`);
+        doc.text(`Digitador: ${votacionesFiltradas[0]?.digitador?.username || "N/A"}`);
+        doc.moveDown();
+
+        const columnas = ["#", "Cédula", "Nombre", "Teléfono", "Dirección", "Barrio", "Puesto", "Programa", "Fecha"];
+
+        const pageWidth = doc.page.width;
+        const colWidth = (pageWidth - 30) / columnas.length;
+        const rowHeight = 18;
+
+        let currentY = doc.y;
+
+        // Encabezados
+        doc.fontSize(7).font("Helvetica-Bold");
+
+        columnas.forEach((col, i) => {
+          doc.text(col, 15 + i * colWidth, currentY, {
+            width: colWidth - 2,
+            align: "center",
+            truncate: true,
+          });
+        });
+
+        currentY += rowHeight;
+
+        // Datos
+        doc.fontSize(6).font("Helvetica");
+
+        votacionesFiltradas.forEach((v, i) => {
+
+          if (currentY + rowHeight > doc.page.height - 20) {
+            doc.addPage();
+            currentY = 15;
+          }
+
+          const nombre = `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+          const puesto = puestosMap[v.puestoVotacion] || "SIN PUESTO";
+
+          const datos = [
+            i + 1,
+            v.cedula || "",
+            nombre,
+            v.telefono || "",
+            v.direccion || "",
+            v.barrio || "",
+            puesto,
+            v.programa?.nombre || "",
+            new Date(v.createdAt).toLocaleDateString("es-CO"),
+          ];
+
+          datos.forEach((dato, j) => {
+            doc.text(String(dato).substring(0, 15), 15 + j * colWidth, currentY, {
+              width: colWidth - 2,
+              align: "center",
+              truncate: true,
+            });
+          });
+
+          currentY += rowHeight;
+        });
+
+      });
+
+      doc.end();
+
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
 
 
 

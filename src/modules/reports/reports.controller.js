@@ -12,7 +12,7 @@ import archiver from "archiver";
 
 
 import { generarPdfPorLider, generarPdfPorPuesto, generarPdfPorPrograma, generarPdfReporteGeneral, generarPdfCedulas, generarPdfConfirmados, generarPdfReportePorBarrio, generarPdfReportePorSede,
-  generarPdfPorLiderSinBloqueoCedulas
+  generarPdfPorLiderSinBloqueoCedulas, generarPdfPorLiderConfirmadas
  } from "./pdf-generator.js";
 
 
@@ -1314,6 +1314,250 @@ export const exportExcelPorLiderSinBloqueoCedulas = async (req, res) => {
     res.setHeader(
       "Content-Disposition",
       "attachment; filename=reporte_votaciones_por_lider_sin_bloqueadas.xlsx"
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.end(buffer);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportPdfPorLiderConfirmadas = async (req, res) => {
+  try {
+    const formato = req.query.formato || "A4";
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+
+    const lideres = await prisma.leader.findMany({
+      where: { isActive: true },
+      include: {
+        votaciones: {
+          where,
+          include: {
+            tipo: { select: { nombre: true } },
+            programa: { select: { nombre: true } },
+            digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } }
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    // 🔥 TRAER CONFIRMADAS
+    const confirmadas = await prisma.cedulaConfirmada.findMany({
+      where: { activa: true },
+      select: { cedula: true }
+    });
+
+    const setConfirmadas = new Set(
+      confirmadas.map(c => c.cedula)
+    );
+
+    // 🔥 FILTRAR SOLO CONFIRMADAS
+    const lideresFiltrados = lideres.map(lider => ({
+      ...lider,
+      votaciones: lider.votaciones.filter(v =>
+        setConfirmadas.has(v.cedula)
+      )
+    }));
+
+    const puestoIds = [
+      ...new Set(
+        lideresFiltrados.flatMap(l =>
+          l.votaciones.map(v => v.puestoVotacion).filter(Boolean)
+        )
+      )
+    ];
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true }
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    const pdf = await generarPdfPorLiderConfirmadas(
+      lideresFiltrados,
+      puestosMap,
+      prisma,
+      formato
+    );
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=reporte_por_lider_confirmadas.pdf");
+    res.end(pdf);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportZipPorLiderConfirmadas = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+    const formato = req.query.formato || "A4";
+
+    const lideres = await prisma.leader.findMany({
+      where: { isActive: true },
+      include: {
+        votaciones: {
+          where,
+          include: {
+            tipo: { select: { nombre: true } },
+            programa: { select: { nombre: true } },
+            digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const confirmadas = await prisma.cedulaConfirmada.findMany({
+      where: { activa: true },
+      select: { cedula: true },
+    });
+
+    const setConfirmadas = new Set(
+      confirmadas.map(c => c.cedula)
+    );
+
+    const lideresFiltrados = lideres.map(lider => ({
+      ...lider,
+      votaciones: lider.votaciones.filter(v =>
+        setConfirmadas.has(v.cedula)
+      )
+    }));
+
+    const puestoIds = [...new Set(
+      lideresFiltrados.flatMap(l =>
+        l.votaciones.map(v => v.puestoVotacion).filter(Boolean)
+      )
+    )];
+
+    const puestosDb = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true },
+    });
+
+    const puestosMap = Object.fromEntries(
+      puestosDb.map(p => [p.id, p.puesto])
+    );
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=reportes_por_lider_confirmadas.zip");
+
+    const archive = archiver("zip");
+    archive.pipe(res);
+
+    for (const lider of lideresFiltrados) {
+
+      if (!lider.votaciones.length) continue;
+
+      const pdf = await generarPdfPorLiderConfirmadas(
+        [lider],
+        puestosMap,
+        prisma,
+        formato
+      );
+
+      archive.append(pdf, {
+        name: `reporte_lider_${lider.name.replace(/\s+/g, "_").toLowerCase()}_confirmadas.pdf`,
+      });
+    }
+
+    await archive.finalize();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const exportExcelPorLiderConfirmadas = async (req, res) => {
+  try {
+    const where = buildWhereByRole(req.user);
+    where.isActive = true;
+
+    const lideres = await prisma.leader.findMany({
+      where: { isActive: true },
+      include: {
+        votaciones: {
+          where,
+          include: {
+            tipo: { select: { nombre: true } },
+            programa: { select: { nombre: true } },
+            digitador: { select: { username: true } },
+            recommendedBy: { select: { name: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const confirmadas = await prisma.cedulaConfirmada.findMany({
+      where: { activa: true },
+      select: { cedula: true },
+    });
+
+    const setConfirmadas = new Set(
+      confirmadas.map(c => c.cedula)
+    );
+
+    const rows = [];
+
+    for (const lider of lideres) {
+
+      for (const v of lider.votaciones) {
+
+        if (!setConfirmadas.has(v.cedula)) continue;
+
+        const nombreCompleto =
+          `${v.nombre1} ${v.nombre2 || ""} ${v.apellido1} ${v.apellido2 || ""}`.trim();
+
+        rows.push({
+          Lider: lider.name,
+          Cedula: v.cedula || "",
+          NombreCompleto: nombreCompleto,
+          Telefono: v.telefono || "",
+          Direccion: v.direccion || "",
+          Barrio: v.barrio || "",
+          PuestoVotacion: v.puestoVotacion || "",
+          Programa: v.programa?.nombre || "",
+          Tipo: v.tipo?.nombre || "",
+          FechaRegistro: v.createdAt
+            ? new Date(v.createdAt).toLocaleDateString("es-CO")
+            : "",
+        });
+      }
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Confirmadas");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_votaciones_por_lider_confirmadas.xlsx"
     );
 
     res.setHeader(

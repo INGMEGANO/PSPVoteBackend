@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { validarCedulasExcel,importarCedulasController, getCedulasBloqueadas, toggleCedulaBloqueada } from "./ExcelValidationController.js";
+import { validarCedulasExcel,importarCedulasController, getCedulasBloqueadas, toggleCedulaBloqueada,importarCedulasConfirmadasController, descargarBackup } from "./ExcelValidationController.js";
 
 const router = express.Router();
 const upload = multer(); // memoria
@@ -28,5 +28,13 @@ router.patch(
   "/cedulas-bloqueadas/:id/toggle",
   toggleCedulaBloqueada
 );
+
+router.post(
+  "/excel/importar-confirmadas",
+  upload.single("file"),
+  importarCedulasConfirmadasController
+);
+
+router.get("/backup-db", descargarBackup);
 
 export default router;

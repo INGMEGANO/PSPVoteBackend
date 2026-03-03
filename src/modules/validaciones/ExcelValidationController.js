@@ -279,3 +279,113 @@ export const toggleCedulaBloqueada = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+export async function importarExcelCedulasConfirmadas(file) {
+
+  const workbook = new ExcelJS.Workbook();
+
+  await workbook.xlsx.load(file.buffer);
+
+  const worksheet = workbook.worksheets[0];
+
+  const existentesDB = await prisma.cedulaConfirmada.findMany({
+    select: { cedula: true }
+  });
+
+  const setExistentes = new Set(
+    existentesDB.map(e => e.cedula)
+  );
+
+  const nuevas = [];
+
+  for (let i = 2; i <= worksheet.rowCount; i++) {
+
+    const row = worksheet.getRow(i);
+    const cedulaRaw = row.getCell(1).value;
+
+    if (!cedulaRaw) continue;
+
+    const cedula = String(cedulaRaw)
+      .replace(/\./g, "")
+      .replace(/-/g, "")
+      .trim();
+
+    if (!setExistentes.has(cedula)) {
+      nuevas.push({ cedula });
+    }
+  }
+
+  const chunkSize = 1000;
+
+  for (let i = 0; i < nuevas.length; i += chunkSize) {
+    const chunk = nuevas.slice(i, i + chunkSize);
+
+    await prisma.cedulaConfirmada.createMany({
+      data: chunk,
+      skipDuplicates: true
+    });
+  }
+
+  return {
+    totalExcel: worksheet.rowCount - 1,
+    nuevasInsertadas: nuevas.length,
+    yaExistian: worksheet.rowCount - 1 - nuevas.length
+  };
+} 
+
+export const importarCedulasConfirmadasController = async (req, res) => {
+  try {
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No se subió archivo" });
+    }
+
+    const resultado = await importarExcelCedulasConfirmadas(req.file);
+
+    return res.json({
+      ok: true,
+      ...resultado
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Error importando Excel de confirmadas" });
+  }
+};
+
+import { exec } from "child_process";
+import os from "os";
+import fs from "fs";
+import path from "path";
+
+export const descargarBackup = (req, res) => {
+  const fecha = new Date().toISOString().replace(/[:.]/g, "-");
+  const fileName = `backup-${fecha}.sql`;
+  const filePath = path.join("backups", fileName);
+
+  if (!fs.existsSync("backups")) {
+    fs.mkdirSync("backups");
+  }
+
+  let mysqldumpPath = "mysqldump";
+
+  // Si es Windows (local Laragon)
+  if (os.platform() === "win32") {
+    mysqldumpPath = `"C:\\laragon\\bin\\mysql\\mysql-8.0.35-winx64\\bin\\mysqldump.exe"`;
+  }
+
+  const comando = `${mysqldumpPath} -u ${process.env.DB_USER} -p${process.env.DB_PASS} ${process.env.DB_NAME} > "${filePath}"`;
+
+  exec(comando, (error) => {
+    if (error) {
+      console.error("Error en backup:", error);
+      return res.status(500).json({ error: "Error creando backup" });
+    }
+
+    // Guardar fecha del último backup
+    fs.writeFileSync("backups/last-backup.txt", new Date().toISOString());
+
+    res.download(filePath);
+  });
+};

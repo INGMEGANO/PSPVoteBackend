@@ -36,7 +36,8 @@ import {
   exportZipPorSede,
   exportExcelPorSede,
   previewPorLider,
-  exportPdfPorLiderSinBloqueoCedulas, exportZipPorLiderSinBloqueoCedulas, exportExcelPorLiderSinBloqueoCedulas
+  exportPdfPorLiderSinBloqueoCedulas, exportZipPorLiderSinBloqueoCedulas, exportExcelPorLiderSinBloqueoCedulas,
+  exportPdfPorLiderConfirmadas, exportZipPorLiderConfirmadas, exportExcelPorLiderConfirmadas
 } from "./reports.controller.js"
 
 import { authMiddleware } from "../../middlewares/auth.middleware.js"
@@ -65,6 +66,21 @@ router.get("/dashboard/exportzippdf", exportZipPorLider);
 router.get("/dashboard/exportpdfporlidersinbloqueocedulas", exportPdfPorLiderSinBloqueoCedulas);
 router.get("/dashboard/exportzipporlidersinbloqueocedulas", exportZipPorLiderSinBloqueoCedulas);
 router.get("/dashboard/exportexcelporlidersinbloqueocedulas", exportExcelPorLiderSinBloqueoCedulas);
+
+router.get(
+  "/dashboard/exportpdfporliderconfirmadas",
+  exportPdfPorLiderConfirmadas
+);
+
+router.get(
+  "/dashboard/exportzipporliderconfirmadas",
+  exportZipPorLiderConfirmadas
+);
+
+router.get(
+  "/dashboard/exportexcelporliderconfirmadas",
+  exportExcelPorLiderConfirmadas
+);
 
 router.get("/dashboard/exportpdfporpuesto", exportPdfPorPuesto);
 //router.get("/dashboard/exportzippdfporpuesto", exportZipPorPuesto);
