@@ -354,64 +354,6 @@ export const importarCedulasConfirmadasController = async (req, res) => {
   }
 };
 
-import fs from "fs";
-import path from "path";
-import mysqldump from "mysqldump";
-
-const backupFolder = path.join("backups");
-if (!fs.existsSync(backupFolder)) fs.mkdirSync(backupFolder);
-
-export const descargarBackup = async (req, res) => {
-  const { DB_HOST, DB_USER, DB_PASS, DB_NAME } = process.env;
-
-  if (!DB_USER || !DB_NAME) {
-    return res.status(500).json({ error: "Variables de entorno de DB no configuradas." });
-  }
-
-  const fecha = new Date().toISOString().replace(/[:.]/g, "-");
-  const fileName = `backup-${fecha}.sql`;
-  const filePath = path.join(backupFolder, fileName);
-
-  try {
-    await mysqldump({
-      connection: {
-        host: DB_HOST || "localhost",
-        user: DB_USER,
-        password: DB_PASS || "",
-        database: DB_NAME, // ⚠ Esto es obligatorio
-      },
-      dumpToFile: filePath,
-    });
-
-    res.download(filePath);
-  } catch (err) {
-    console.error("Error creando backup:", err);
-    res.status(500).json({ error: "Error creando backup" });
-  }
-};
-
-
-/**
- * Endpoint para verificar si hay backup reciente (24h)
- */
-export const verificarBackup = (req, res) => {
-  const lastBackupFile = path.join(backupFolder, "last-backup.txt");
-
-  if (!fs.existsSync(lastBackupFile)) {
-    return res.json({ alerta: "⚠ Nunca se ha hecho backup." });
-  }
-
-  const fechaGuardada = fs.readFileSync(lastBackupFile, "utf8");
-  const ultimaFecha = new Date(fechaGuardada);
-  const ahora = new Date();
-  const diferenciaHoras = (ahora - ultimaFecha) / (1000 * 60 * 60);
-
-  if (diferenciaHoras > 24) {
-    return res.json({ alerta: "⚠ Han pasado más de 24 horas sin hacer backup." });
-  }
-
-  res.json({ mensaje: "✅ Backup reciente." });
-};
 
 
 export const crearReporte = async (req, res) => {
