@@ -362,6 +362,12 @@ const backupFolder = path.join("backups");
 if (!fs.existsSync(backupFolder)) fs.mkdirSync(backupFolder);
 
 export const descargarBackup = async (req, res) => {
+  const { DB_HOST, DB_USER, DB_PASS, DB_NAME } = process.env;
+
+  if (!DB_USER || !DB_NAME) {
+    return res.status(500).json({ error: "Variables de entorno de DB no configuradas." });
+  }
+
   const fecha = new Date().toISOString().replace(/[:.]/g, "-");
   const fileName = `backup-${fecha}.sql`;
   const filePath = path.join(backupFolder, fileName);
@@ -369,16 +375,13 @@ export const descargarBackup = async (req, res) => {
   try {
     await mysqldump({
       connection: {
-        host: process.env.DB_HOST || "localhost",
-        user: process.env.DB_USER,
-        password: process.env.DB_PASS || "",
-        database: process.env.DB_NAME,
+        host: DB_HOST || "localhost",
+        user: DB_USER,
+        password: DB_PASS || "",
+        database: DB_NAME, // ⚠ Esto es obligatorio
       },
       dumpToFile: filePath,
     });
-
-    // Guardar fecha del último backup
-    fs.writeFileSync(path.join(backupFolder, "last-backup.txt"), new Date().toISOString());
 
     res.download(filePath);
   } catch (err) {
@@ -386,6 +389,7 @@ export const descargarBackup = async (req, res) => {
     res.status(500).json({ error: "Error creando backup" });
   }
 };
+
 
 /**
  * Endpoint para verificar si hay backup reciente (24h)
