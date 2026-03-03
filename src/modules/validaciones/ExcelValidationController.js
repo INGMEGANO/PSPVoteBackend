@@ -70,7 +70,10 @@ export const validarCedulasExcel = async (req, res) => {
       if (!cedulaExcel) continue;
 
       const resultado = await prisma.votacion.findFirst({
-        where: { cedula: cedulaExcel },
+        where: { 
+          cedula: cedulaExcel,
+          isActive: true   // <--- solo buscar activas
+        },
         include: {
           leader: true
         }
