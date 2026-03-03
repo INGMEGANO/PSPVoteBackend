@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
-import { validarCedulasExcel,importarCedulasController, getCedulasBloqueadas, toggleCedulaBloqueada,importarCedulasConfirmadasController, descargarBackup,
+import { validarCedulasExcel,importarCedulasController, getCedulasBloqueadas, toggleCedulaBloqueada,importarCedulasConfirmadasController, 
+  descargarBackup, verificarBackup,
   obtenerReportes, crearReporte
  } from "./ExcelValidationController.js";
 
@@ -38,6 +39,7 @@ router.post(
 );
 
 router.get("/backup-db", descargarBackup);
+router.get("/verificar-backup", verificarBackup);
 
 
 router.get("/reportes", obtenerReportes);

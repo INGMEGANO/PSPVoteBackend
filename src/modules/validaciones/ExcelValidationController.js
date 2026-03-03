@@ -354,40 +354,59 @@ export const importarCedulasConfirmadasController = async (req, res) => {
   }
 };
 
-import { exec } from "child_process";
-import os from "os";
 import fs from "fs";
 import path from "path";
+import mysqldump from "mysqldump";
 
-export const descargarBackup = (req, res) => {
+const backupFolder = path.join("backups");
+if (!fs.existsSync(backupFolder)) fs.mkdirSync(backupFolder);
+
+export const descargarBackup = async (req, res) => {
   const fecha = new Date().toISOString().replace(/[:.]/g, "-");
   const fileName = `backup-${fecha}.sql`;
-  const filePath = path.join("backups", fileName);
+  const filePath = path.join(backupFolder, fileName);
 
-  if (!fs.existsSync("backups")) {
-    fs.mkdirSync("backups");
-  }
-
-  let mysqldumpPath = "mysqldump";
-
-  // Si es Windows (local Laragon)
-  if (os.platform() === "win32") {
-    mysqldumpPath = `"C:\\laragon\\bin\\mysql\\mysql-8.0.35-winx64\\bin\\mysqldump.exe"`;
-  }
-
-  const comando = `${mysqldumpPath} -u ${process.env.DB_USER} -p${process.env.DB_PASS} ${process.env.DB_NAME} > "${filePath}"`;
-
-  exec(comando, (error) => {
-    if (error) {
-      console.error("Error en backup:", error);
-      return res.status(500).json({ error: "Error creando backup" });
-    }
+  try {
+    await mysqldump({
+      connection: {
+        host: process.env.DB_HOST || "localhost",
+        user: process.env.DB_USER,
+        password: process.env.DB_PASS || "",
+        database: process.env.DB_NAME,
+      },
+      dumpToFile: filePath,
+    });
 
     // Guardar fecha del último backup
-    fs.writeFileSync("backups/last-backup.txt", new Date().toISOString());
+    fs.writeFileSync(path.join(backupFolder, "last-backup.txt"), new Date().toISOString());
 
     res.download(filePath);
-  });
+  } catch (err) {
+    console.error("Error creando backup:", err);
+    res.status(500).json({ error: "Error creando backup" });
+  }
+};
+
+/**
+ * Endpoint para verificar si hay backup reciente (24h)
+ */
+export const verificarBackup = (req, res) => {
+  const lastBackupFile = path.join(backupFolder, "last-backup.txt");
+
+  if (!fs.existsSync(lastBackupFile)) {
+    return res.json({ alerta: "⚠ Nunca se ha hecho backup." });
+  }
+
+  const fechaGuardada = fs.readFileSync(lastBackupFile, "utf8");
+  const ultimaFecha = new Date(fechaGuardada);
+  const ahora = new Date();
+  const diferenciaHoras = (ahora - ultimaFecha) / (1000 * 60 * 60);
+
+  if (diferenciaHoras > 24) {
+    return res.json({ alerta: "⚠ Han pasado más de 24 horas sin hacer backup." });
+  }
+
+  res.json({ mensaje: "✅ Backup reciente." });
 };
 
 
