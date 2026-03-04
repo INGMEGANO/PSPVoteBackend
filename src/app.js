@@ -1,6 +1,8 @@
 import express from "express"
 import cors from "cors"
 
+import externoRoutes from "./modules/externo/externo.routes.js";
+
 import authRoutes from "./modules/auth/auth.routes.js"
 
 import usersRoutes from "./modules/users/users.routes.js"
@@ -55,6 +57,7 @@ app.use("/api/validaciones", excelRoutes);
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 
+app.use("/api/externo", externoRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "API Votaciones funcionando" })
