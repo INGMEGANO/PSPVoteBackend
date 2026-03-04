@@ -46,6 +46,11 @@ export const getVotacionExterno = async (req, res) => {
       });
     }
 
+    // 🔒 Validar si existe confirmación externa
+    const confirmacionExterna = await prisma.votacionConfirmacionExterna.findFirst({
+      where: { cedula }
+    });
+
     // 🔥 Obtener nombres de puestos
     const puestoIds = [...new Set(
       votaciones.map(v => v.puestoVotacion).filter(Boolean)
@@ -62,6 +67,7 @@ export const getVotacionExterno = async (req, res) => {
     });
 
     const result = votaciones.map((item, index) => ({
+
       idnumber: index + 1,
 
       id: item.id,
@@ -86,12 +92,17 @@ export const getVotacionExterno = async (req, res) => {
       isDuplicate: item.isDuplicate,
       duplicatedFrom: item.duplicatedFrom,
 
-      confirmado: !!item.confirmacion,
+      // 🔥 AJUSTE IMPORTANTE AQUÍ
+      confirmado: !!item.confirmacion || !!confirmacionExterna,
+
       codigoVotacion: item.confirmacion?.codigoVotacion || null,
+
       imagenConfirmacion: item.confirmacion
         ? `/uploads/votos/${item.confirmacion.imagen}`
         : null,
+
       fechaConfirmacion: item.confirmacion?.createdAt || null,
+
       confirmadoPor: item.confirmacion?.confirmadoPor
         ? {
             id: item.confirmacion.confirmadoPor.id,
@@ -195,10 +206,10 @@ export const confirmarVotoExterno = async (req, res) => {
 
 
 export const confirmarVotoCedCodLidExterno = async (req, res) => {
-  const { cedula, codigoLider } = req.body;
+  const { cedula, codigoLider } = req.body || {};
 
   try {
-    // 1️⃣ Validar campos obligatorios
+    // 1️⃣ Validar campos
     if (!cedula || !codigoLider) {
       return res.status(400).json({
         ok: false,
@@ -206,7 +217,7 @@ export const confirmarVotoCedCodLidExterno = async (req, res) => {
       });
     }
 
-    // 2️⃣ Validar que exista el líder activo
+    // 2️⃣ Validar líder activo
     const leader = await prisma.leaderExt.findFirst({
       where: {
         codigoReferencia: codigoLider,
@@ -236,19 +247,28 @@ export const confirmarVotoCedCodLidExterno = async (req, res) => {
       });
     }
 
+    // 4️⃣ 🔒 VALIDAR QUE NO ESTÉ YA CONFIRMADA
+    const yaConfirmado = await prisma.votacionConfirmacionExterna.findFirst({
+      where: {
+        cedula: cedula
+      }
+    });
+
+    /*if (yaConfirmado) {
+      return res.status(400).json({
+        ok: false,
+        message: "Esta cédula ya realizó la confirmación externa"
+      });
+    }*/
+
     // ✅ Todo correcto
     return res.json({
       ok: true,
-      message: "Cédula y código de líder válidos",
-      data: {
-        leader,
-        votante: votacionExiste
-      }
+      message: "Cédula y código de líder válidos"
     });
 
   } catch (error) {
     console.error(error);
-
     return res.status(500).json({
       ok: false,
       message: "Error interno del servidor"
