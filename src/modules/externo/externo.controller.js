@@ -264,7 +264,11 @@ export const confirmarVotoCedCodLidExterno = async (req, res) => {
     // ✅ Todo correcto
     return res.json({
       ok: true,
-      message: "Cédula y código de líder válidos"
+      message: "Cédula y código de líder válidos",
+      data: {
+        leader,
+        votante: votacionExiste
+      }
     });
 
   } catch (error) {
