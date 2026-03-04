@@ -194,6 +194,69 @@ export const confirmarVotoExterno = async (req, res) => {
 */
 
 
+export const confirmarVotoCedCodLidExterno = async (req, res) => {
+  const { cedula, codigoLider } = req.body;
+
+  try {
+    // 1️⃣ Validar campos obligatorios
+    if (!cedula || !codigoLider) {
+      return res.status(400).json({
+        ok: false,
+        message: "Cédula y código de líder son obligatorios"
+      });
+    }
+
+    // 2️⃣ Validar que exista el líder activo
+    const leader = await prisma.leaderExt.findFirst({
+      where: {
+        codigoReferencia: codigoLider,
+        isActive: true
+      }
+    });
+
+    if (!leader) {
+      return res.status(400).json({
+        ok: false,
+        message: "Código de líder inválido"
+      });
+    }
+
+    // 3️⃣ Validar que exista la cédula activa
+    const votacionExiste = await prisma.votacion.findFirst({
+      where: {
+        cedula,
+        isActive: true
+      }
+    });
+
+    if (!votacionExiste) {
+      return res.status(400).json({
+        ok: false,
+        message: "Cédula no válida"
+      });
+    }
+
+    // ✅ Todo correcto
+    return res.json({
+      ok: true,
+      message: "Cédula y código de líder válidos",
+      data: {
+        leader,
+        votante: votacionExiste
+      }
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      ok: false,
+      message: "Error interno del servidor"
+    });
+  }
+};
+
+
 export const confirmarVotoExterno = async (req, res) => {
   const { cedula, codigoLider, codigoVotacion } = req.body;
   const imagenes = req.files;
@@ -297,3 +360,67 @@ function limpiarImagenes(imagenes) {
     } catch (e) {}
   }
 }
+
+
+export const listarConfirmacionesExternas = async (req, res) => {
+  try {
+    // 1️⃣ Traer confirmaciones
+    const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
+      orderBy: {
+        confirmadoEn: 'desc'
+      }
+    });
+
+    // 2️⃣ Sacar códigos únicos de líder
+    const codigosLider = [
+      ...new Set(confirmaciones.map(c => c.codigoLider))
+    ];
+
+    // 3️⃣ Sacar cédulas únicas
+    const cedulas = [
+      ...new Set(confirmaciones.map(c => c.cedula))
+    ];
+
+    // 4️⃣ Buscar líderes
+    const leaders = await prisma.leaderExt.findMany({
+      where: {
+        codigoReferencia: {
+          in: codigosLider
+        }
+      }
+    });
+
+    // 5️⃣ Buscar votantes
+    const votantes = await prisma.votacion.findMany({
+      where: {
+        cedula: {
+          in: cedulas
+        }
+      }
+    });
+
+    // 6️⃣ Unir todo manualmente
+    const data = confirmaciones.map(c => ({
+      ...c,
+      leader: leaders.find(
+        l => l.codigoReferencia === c.codigoLider
+      ) || null,
+      votante: votantes.find(
+        v => v.cedula === c.cedula
+      ) || null
+    }));
+
+    return res.json({
+      ok: true,
+      total: data.length,
+      data
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      ok: false,
+      message: "Error al listar confirmaciones externas"
+    });
+  }
+};

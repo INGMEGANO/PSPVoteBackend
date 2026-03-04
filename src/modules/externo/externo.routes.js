@@ -1,7 +1,9 @@
 import { Router } from "express";
 import {
   getVotacionExterno,
-  confirmarVotoExterno
+  confirmarVotoExterno,
+  listarConfirmacionesExternas,
+  confirmarVotoCedCodLidExterno
 } from "./externo.controller.js";
 
 import multer from "multer";
@@ -13,6 +15,12 @@ const router = Router();
 
 // 🔓 SIN TOKEN
 router.get("/votacion/:cedula", getVotacionExterno);
+
+router.post(
+  '/confirmar-cedula-lider-externo',
+  confirmarVotoCedCodLidExterno
+);
+
 router.post("/confirmar", confirmarVotoExterno);
 
 
@@ -34,5 +42,7 @@ router.post(
   upload.array("imagenes", 5),
   confirmarVotoExterno
 );
+
+router.get('/confirmaciones-externas', listarConfirmacionesExternas);
 
 export default router;
