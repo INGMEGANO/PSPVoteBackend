@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import prisma from "../../prisma.js"
 
 // ===============================
@@ -115,6 +117,7 @@ export const getVotacionExterno = async (req, res) => {
 // ===============================
 // ✅ CONFIRMAR VOTO EXTERNO
 // ===============================
+/*
 export const confirmarVotoExterno = async (req, res) => {
   const { cedula, codigoVotacion } = req.body;
 
@@ -188,3 +191,109 @@ export const confirmarVotoExterno = async (req, res) => {
     });
   }
 };
+*/
+
+
+export const confirmarVotoExterno = async (req, res) => {
+  const { cedula, codigoLider, codigoVotacion } = req.body;
+  const imagenes = req.files;
+
+  try {
+    // 1️⃣ Validar campos obligatorios
+    if (!cedula || !codigoLider || !codigoVotacion) {
+      return res.status(400).json({
+        ok: false,
+        message: "Cédula, código de líder y código de votación son obligatorios"
+      });
+    }
+
+    // 2️⃣ Validar que exista el líder en LeaderExt
+    const leader = await prisma.leaderExt.findFirst({
+      where: {
+        codigoReferencia: codigoLider,
+        isActive: true
+      }
+    });
+
+    if (!leader) {
+      limpiarImagenes(imagenes);
+      return res.status(400).json({
+        ok: false,
+        message: "Código de líder inválido"
+      });
+    }
+
+    // 3️⃣ Validar que la cédula exista en votacion
+    const votacionExiste = await prisma.votacion.findFirst({
+      where: {
+        cedula,
+        isActive: true
+      }
+    });
+
+    if (!votacionExiste) {
+      limpiarImagenes(imagenes);
+      return res.status(400).json({
+        ok: false,
+        message: "Cédula no válida"
+      });
+    }
+
+    // 4️⃣ Validar código no repetido
+    const codigoUsado = await prisma.votacionConfirmacionExterna.findFirst({
+      where: { codigoVotacion }
+    });
+
+    if (codigoUsado) {
+      limpiarImagenes(imagenes);
+      return res.status(400).json({
+        ok: false,
+        message: "Este código ya fue utilizado"
+      });
+    }
+
+    // 5️⃣ Validar imágenes
+    if (!imagenes || imagenes.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        message: "Debe subir al menos una imagen"
+      });
+    }
+
+    const nombresImagenes = imagenes.map(img => img.filename);
+
+    // 6️⃣ Guardar confirmación
+    await prisma.votacionConfirmacionExterna.create({
+      data: {
+        cedula,
+        codigoLider,
+        codigoVotacion,
+        imagenes: nombresImagenes
+      }
+    });
+
+    return res.json({
+      ok: true,
+      message: "Voto externo confirmado correctamente"
+    });
+
+  } catch (error) {
+    console.error(error);
+    limpiarImagenes(imagenes);
+
+    return res.status(500).json({
+      ok: false,
+      message: "Error interno del servidor"
+    });
+  }
+};
+
+function limpiarImagenes(imagenes) {
+  if (!imagenes) return;
+
+  for (const img of imagenes) {
+    try {
+      fs.unlinkSync(path.join("uploads/votos", img.filename));
+    } catch (e) {}
+  }
+}

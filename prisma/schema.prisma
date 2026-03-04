@@ -274,3 +274,29 @@ model Descarga {
   reporte   Reporte @relation(fields: [reporteId], references: [id])
   reporteId Int
 }
+
+model LeaderExt {
+  id      String  @id @default(uuid())
+  name    String
+  phone   String?
+  address String?
+
+  codigoReferencia String @unique @db.VarChar(4)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VotacionConfirmacionExterna {
+  id             String   @id @default(uuid())
+
+  cedula         String
+  codigoLider    String
+  codigoVotacion String   @unique
+
+  imagenes       Json     // array de nombres de imágenes
+
+  confirmadoEn   DateTime @default(now())
+}
