@@ -349,19 +349,29 @@ export const confirmarVotoExterno = async (req, res) => {
 
     const nombresImagenes = imagenes.map(img => img.filename);
 
-    // 6️⃣ Guardar confirmación
-    await prisma.votacionConfirmacionExterna.create({
+    // 🔹 Obtener fecha actual en Colombia
+    const fechaColombia = new Date().toLocaleString("es-CO", {
+      timeZone: "America/Bogota"
+    });
+
+    // 6️⃣ Guardar confirmación incluyendo confirmadoEn
+    const nuevaConfirmacion = await prisma.votacionConfirmacionExterna.create({
       data: {
         cedula,
         codigoLider,
         codigoVotacion,
-        imagenes: nombresImagenes
+        imagenes: nombresImagenes,
+        confirmadoEn: new Date() // UTC en BD
       }
     });
 
     return res.json({
       ok: true,
-      message: "Voto externo confirmado correctamente"
+      message: "Voto externo confirmado correctamente",
+      data: {
+        ...nuevaConfirmacion,
+        confirmadoEnColombia: fechaColombia // 👈 fecha legible Colombia
+      }
     });
 
   } catch (error) {
@@ -385,7 +395,7 @@ function limpiarImagenes(imagenes) {
   }
 }
 
-
+/*
 export const listarConfirmacionesExternas = async (req, res) => {
   try {
     // 1️⃣ Traer confirmaciones
@@ -433,6 +443,90 @@ export const listarConfirmacionesExternas = async (req, res) => {
         v => v.cedula === c.cedula
       ) || null
     }));
+
+    return res.json({
+      ok: true,
+      total: data.length,
+      data
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      ok: false,
+      message: "Error al listar confirmaciones externas"
+    });
+  }
+};
+
+*/
+
+export const listarConfirmacionesExternas = async (req, res) => {
+  try {
+    // 1️⃣ Traer confirmaciones
+    const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
+      orderBy: {
+        confirmadoEn: 'desc'
+      }
+    });
+
+    // 2️⃣ Sacar códigos únicos de líder
+    const codigosLider = [
+      ...new Set(confirmaciones.map(c => c.codigoLider))
+    ];
+
+    // 3️⃣ Sacar cédulas únicas
+    const cedulas = [
+      ...new Set(confirmaciones.map(c => c.cedula))
+    ];
+
+    // 4️⃣ Buscar líderes
+    const leaders = await prisma.leaderExt.findMany({
+      where: {
+        codigoReferencia: {
+          in: codigosLider
+        }
+      }
+    });
+
+    // 5️⃣ Buscar votantes
+    const votantes = await prisma.votacion.findMany({
+      where: {
+        cedula: {
+          in: cedulas
+        }
+      }
+    });
+
+    // 5️⃣b️⃣ Traer todos los puestos de votación únicos
+    const puestoIds = [...new Set(votantes.map(v => v.puestoVotacion).filter(Boolean))];
+
+    const puestos = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true }
+    });
+
+    // 6️⃣ Crear mapa id -> nombre
+    const puestosMap = {};
+    puestos.forEach(p => {
+      puestosMap[p.id] = p.puesto;
+    });
+
+    // 7️⃣ Unir todo manualmente y agregar nombre del puesto
+    const data = confirmaciones.map(c => {
+      const votante = votantes.find(v => v.cedula === c.cedula) || null;
+
+      return {
+        ...c,
+        leader: leaders.find(l => l.codigoReferencia === c.codigoLider) || null,
+        votante: votante
+          ? {
+              ...votante,
+              puestoVotacionNombre: puestosMap[votante.puestoVotacion] || null
+            }
+          : null
+      };
+    });
 
     return res.json({
       ok: true,
