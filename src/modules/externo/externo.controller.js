@@ -464,7 +464,7 @@ export const listarConfirmacionesExternas = async (req, res) => {
 
 */
 
-/*
+
 export const listarConfirmacionesExternas = async (req, res) => {
   try {
     // 1️⃣ Traer confirmaciones
@@ -546,7 +546,8 @@ export const listarConfirmacionesExternas = async (req, res) => {
     });
   }
 };
-*/
+
+/*
 export const listarConfirmacionesExternas = async (req, res) => {
   try {
 
@@ -648,6 +649,7 @@ export const listarConfirmacionesExternas = async (req, res) => {
     });
   }
 };
+*/
 
 
 export const exportPdfConfirmacionesExternas = async (req, res) => {
