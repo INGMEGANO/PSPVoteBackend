@@ -3,7 +3,8 @@ import {
   getVotacionExterno,
   confirmarVotoExterno,
   listarConfirmacionesExternas,
-  confirmarVotoCedCodLidExterno
+  confirmarVotoCedCodLidExterno,
+  exportPdfConfirmacionesExternas
 } from "./externo.controller.js";
 
 import multer from "multer";
@@ -44,5 +45,13 @@ router.post(
 );
 
 router.get('/confirmaciones-externas', listarConfirmacionesExternas);
+
+
+router.get(
+  "/confirmaciones-externas/pdf",
+  exportPdfConfirmacionesExternas
+);
+
+
 
 export default router;
