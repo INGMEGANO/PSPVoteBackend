@@ -464,6 +464,7 @@ export const listarConfirmacionesExternas = async (req, res) => {
 
 */
 
+/*
 export const listarConfirmacionesExternas = async (req, res) => {
   try {
     // 1️⃣ Traer confirmaciones
@@ -545,7 +546,108 @@ export const listarConfirmacionesExternas = async (req, res) => {
     });
   }
 };
+*/
+export const listarConfirmacionesExternas = async (req, res) => {
+  try {
 
+    // 1️⃣ Traer confirmaciones
+    const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
+      orderBy: {
+        confirmadoEn: 'desc'
+      }
+    });
+
+    // 2️⃣ Sacar códigos únicos de líder
+    const codigosLider = [
+      ...new Set(confirmaciones.map(c => c.codigoLider))
+    ];
+
+    // 3️⃣ Sacar cédulas únicas
+    const cedulas = [
+      ...new Set(confirmaciones.map(c => c.cedula))
+    ];
+
+    // 4️⃣ Buscar líderes
+    const leaders = await prisma.leaderExt.findMany({
+      where: {
+        codigoReferencia: {
+          in: codigosLider
+        }
+      }
+    });
+
+    // 5️⃣ Buscar votantes
+    const votantes = await prisma.votacion.findMany({
+      where: {
+        cedula: {
+          in: cedulas
+        }
+      }
+    });
+
+    // 6️⃣ Sacar puestos únicos
+    const puestoIds = [
+      ...new Set(
+        votantes
+          .map(v => v.puestoVotacion)
+          .filter(Boolean)
+      )
+    ];
+
+    const puestos = await prisma.puestoVotacion.findMany({
+      where: { id: { in: puestoIds } },
+      select: { id: true, puesto: true }
+    });
+
+    // 🔥 Crear MAPAS (esto acelera muchísimo)
+    const leadersMap = {};
+    leaders.forEach(l => {
+      leadersMap[l.codigoReferencia] = l;
+    });
+
+    const votantesMap = {};
+    votantes.forEach(v => {
+      votantesMap[v.cedula] = v;
+    });
+
+    const puestosMap = {};
+    puestos.forEach(p => {
+      puestosMap[p.id] = p.puesto;
+    });
+
+    // 7️⃣ Unir todo usando mapas (MUCHO más rápido)
+    const data = confirmaciones.map(c => {
+
+      const votante = votantesMap[c.cedula] || null;
+
+      return {
+        ...c,
+        leader: leadersMap[c.codigoLider] || null,
+        votante: votante
+          ? {
+              ...votante,
+              puestoVotacionNombre:
+                puestosMap[votante.puestoVotacion] || null
+            }
+          : null
+      };
+
+    });
+
+    return res.json({
+      ok: true,
+      total: data.length,
+      data
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      ok: false,
+      message: "Error al listar confirmaciones externas"
+    });
+  }
+};
 
 
 export const exportPdfConfirmacionesExternas = async (req, res) => {
