@@ -651,7 +651,7 @@ export const listarConfirmacionesExternas = async (req, res) => {
 };
 
 
-
+/*
 export const exportPdfConfirmacionesExternas = async (req, res) => {
 
   try {
@@ -664,6 +664,72 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 
     const codigosLider = [...new Set(confirmaciones.map(c => c.codigoLider))];
     const cedulas = [...new Set(confirmaciones.map(c => c.cedula))];
+
+    const leaders = await prisma.leaderExt.findMany({
+      where: {
+        codigoReferencia: {
+          in: codigosLider
+        }
+      }
+    });
+
+    const votantes = await prisma.votacion.findMany({
+      where: {
+        cedula: {
+          in: cedulas
+        }
+      }
+    });
+
+    const data = confirmaciones.map(c => {
+
+      const votante = votantes.find(v => v.cedula === c.cedula) || null;
+
+      return {
+        ...c,
+        leader: leaders.find(l => l.codigoReferencia === c.codigoLider) || null,
+        votante
+      };
+
+    });
+
+    const pdf = await generarPdfConfirmacionesExternas(data);
+
+    res.setHeader("Content-Type", "application/pdf");
+
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=confirmaciones_externas.pdf"
+    );
+
+    res.end(pdf);
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      ok: false,
+      message: "Error generando PDF"
+    });
+
+  }
+
+};
+*/
+
+export const exportPdfConfirmacionesExternas = async (req, res) => {
+
+  try {
+
+    const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
+      orderBy: {
+        confirmadoEn: "desc"
+      }
+    });
+
+    const codigosLider = [...new Set(confirmaciones.map(c => c.codigoLider).filter(Boolean))];
+    const cedulas = [...new Set(confirmaciones.map(c => c.cedula).filter(Boolean))];
 
     const leaders = await prisma.leaderExt.findMany({
       where: {
