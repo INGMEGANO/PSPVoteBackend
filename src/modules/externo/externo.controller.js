@@ -869,13 +869,15 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 
   try {
 
-    // 👇 NUEVO
     const inicio = parseInt(req.query.inicio) || 0;
     const limite = parseInt(req.query.limite) || 50;
 
     const pageSize = limite;
     let page = 0;
     let moreData = true;
+
+    const maxRegistros = limite;
+    let procesados = 0;
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -885,11 +887,11 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 
     const doc = generarPdfConfirmacionesExternas(res);
 
-    while (moreData) {
+    while (moreData && procesados < maxRegistros) {
 
       const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
         orderBy: { confirmadoEn: "desc" },
-        skip: inicio + (page * pageSize), // 👈 rango inicial
+        skip: inicio + (page * pageSize),
         take: pageSize
       });
 
@@ -931,6 +933,7 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 
       await doc.addBloque(data);
 
+      procesados += data.length;
       page++;
 
     }

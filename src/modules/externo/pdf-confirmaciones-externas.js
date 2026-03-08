@@ -428,6 +428,7 @@ export const generarPdfConfirmacionesExternas = (data, res) => {
 };
 */
 
+
 export const generarPdfConfirmacionesExternas = (res) => {
 
   const doc = new PDFDocument({
