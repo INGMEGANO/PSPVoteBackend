@@ -865,6 +865,8 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 };
 */
 
+
+/*
 export const exportPdfConfirmacionesExternas = async (req, res) => {
 
   try {
@@ -931,6 +933,118 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 
       });
 
+      await doc.addBloque(data);
+
+      procesados += data.length;
+      page++;
+
+    }
+
+    doc.finalizar();
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      ok: false,
+      message: "Error generando PDF"
+    });
+
+  }
+
+};
+*/
+
+export const exportPdfConfirmacionesExternas = async (req, res) => {
+
+  try {
+
+    const inicio = parseInt(req.query.inicio) || 0;
+    const limite = parseInt(req.query.limite) || 50;
+
+    const pageSize = limite;
+    let page = 0;
+    let moreData = true;
+
+    const maxRegistros = limite;
+    let procesados = 0;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=confirmaciones_externas.pdf"
+    );
+
+    const doc = generarPdfConfirmacionesExternas(res);
+
+    while (moreData && procesados < maxRegistros) {
+
+      const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
+        orderBy: { confirmadoEn: "desc" },
+        skip: inicio + (page * pageSize),
+        take: pageSize
+      });
+
+      if (confirmaciones.length === 0) {
+        moreData = false;
+        break;
+      }
+
+      const codigosLider = [...new Set(confirmaciones.map(c => c.codigoLider))];
+      const cedulas = [...new Set(confirmaciones.map(c => c.cedula))];
+
+      const leaders = await prisma.leaderExt.findMany({
+        where: {
+          codigoReferencia: {
+            in: codigosLider
+          }
+        }
+      });
+
+      const votantes = await prisma.votacion.findMany({
+        where: {
+          cedula: {
+            in: cedulas
+          }
+        }
+      });
+
+      const data = confirmaciones.map(c => {
+
+        const votante = votantes.find(v => v.cedula === c.cedula) || null;
+
+        return {
+          ...c,
+          leader: leaders.find(l => l.codigoReferencia === c.codigoLider) || null,
+          votante
+        };
+
+      });
+
+      // ⭐ AQUI AGREGAS EL ORDENAMIENTO
+      data.sort((a, b) => {
+
+        const liderA = a.leader?.name || "";
+        const liderB = b.leader?.name || "";
+
+        if (liderA !== liderB) {
+          return liderA.localeCompare(liderB);
+        }
+
+        const votanteA = a.votante
+          ? `${a.votante.nombre1} ${a.votante.apellido1}`
+          : "";
+
+        const votanteB = b.votante
+          ? `${b.votante.nombre1} ${b.votante.apellido1}`
+          : "";
+
+        return votanteA.localeCompare(votanteB);
+
+      });
+
+      // ⭐ NO CAMBIA
       await doc.addBloque(data);
 
       procesados += data.length;
