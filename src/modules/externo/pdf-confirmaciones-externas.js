@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
+import { PassThrough } from "stream";
 
 /*
 export const generarPdfConfirmacionesExternas = (data) => {

@@ -782,7 +782,7 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 };
 */
 
-
+/*
 export const exportPdfConfirmacionesExternas = async (req, res) => {
 
   try {
@@ -804,6 +804,92 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
       const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
         orderBy: { confirmadoEn: "desc" },
         skip: page * pageSize,
+        take: pageSize
+      });
+
+      if (confirmaciones.length === 0) {
+        moreData = false;
+        break;
+      }
+
+      const codigosLider = [...new Set(confirmaciones.map(c => c.codigoLider))];
+      const cedulas = [...new Set(confirmaciones.map(c => c.cedula))];
+
+      const leaders = await prisma.leaderExt.findMany({
+        where: {
+          codigoReferencia: {
+            in: codigosLider
+          }
+        }
+      });
+
+      const votantes = await prisma.votacion.findMany({
+        where: {
+          cedula: {
+            in: cedulas
+          }
+        }
+      });
+
+      const data = confirmaciones.map(c => {
+
+        const votante = votantes.find(v => v.cedula === c.cedula) || null;
+
+        return {
+          ...c,
+          leader: leaders.find(l => l.codigoReferencia === c.codigoLider) || null,
+          votante
+        };
+
+      });
+
+      await doc.addBloque(data);
+
+      page++;
+
+    }
+
+    doc.finalizar();
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      ok: false,
+      message: "Error generando PDF"
+    });
+
+  }
+
+};
+*/
+
+export const exportPdfConfirmacionesExternas = async (req, res) => {
+
+  try {
+
+    // 👇 NUEVO
+    const inicio = parseInt(req.query.inicio) || 0;
+    const limite = parseInt(req.query.limite) || 50;
+
+    const pageSize = limite;
+    let page = 0;
+    let moreData = true;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=confirmaciones_externas.pdf"
+    );
+
+    const doc = generarPdfConfirmacionesExternas(res);
+
+    while (moreData) {
+
+      const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
+        orderBy: { confirmadoEn: "desc" },
+        skip: inicio + (page * pageSize), // 👈 rango inicial
         take: pageSize
       });
 
