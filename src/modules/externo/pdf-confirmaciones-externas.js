@@ -2,7 +2,7 @@ import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
 
-
+/*
 export const generarPdfConfirmacionesExternas = (data) => {
   return new Promise((resolve, reject) => {
 
@@ -137,6 +137,161 @@ export const generarPdfConfirmacionesExternas = (data) => {
 
     } catch (error) {
       reject(error);
+    }
+
+  });
+};
+*/
+
+export const generarPdfConfirmacionesExternas = (data) => {
+  return new Promise((resolve, reject) => {
+
+    try {
+
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 30
+      });
+
+      const chunks = [];
+
+      doc.on("data", chunk => chunks.push(chunk));
+
+      doc.on("end", () => {
+        resolve(Buffer.concat(chunks));
+      });
+
+      doc.on("error", reject);
+
+      // 🧾 Título
+      doc
+        .fontSize(18)
+        .font("Helvetica-Bold")
+        .text("Confirmaciones Externas", { align: "center" });
+
+      doc.moveDown(2);
+
+      data.forEach((item) => {
+
+        if (doc.y > doc.page.height - 200) {
+          doc.addPage();
+        }
+
+        const startY = doc.y;
+
+        const votante = item.votante;
+        const lider = item.leader;
+
+        const nombreVotante = votante
+          ? `${votante.nombre1} ${votante.nombre2 || ""} ${votante.apellido1} ${votante.apellido2 || ""}`.trim()
+          : "N/A";
+
+        const nombreLider = lider?.name || "N/A";
+
+        const infoX = 30;
+        const imageStartX = 300;
+
+        const imgWidth = 80;
+        const imgHeight = 80;
+        const gap = 10;
+
+        // 📄 INFORMACIÓN
+        doc.fontSize(11).font("Helvetica-Bold")
+          .text("Votante:", infoX, startY, { continued: true })
+          .font("Helvetica")
+          .text(` ${nombreVotante}`);
+
+        doc.font("Helvetica-Bold")
+          .text("Cédula:", infoX, doc.y, { continued: true })
+          .font("Helvetica")
+          .text(` ${item.cedula}`);
+
+        doc.font("Helvetica-Bold")
+          .text("Líder:", infoX, doc.y, { continued: true })
+          .font("Helvetica")
+          .text(` ${nombreLider}`);
+
+        doc.font("Helvetica-Bold")
+          .text("Fecha:", infoX, doc.y, { continued: true })
+          .font("Helvetica")
+          .text(` ${new Date(item.confirmadoEn).toLocaleString("es-CO", {
+            timeZone: "America/Bogota"
+          })}`);
+
+        // 📸 IMÁGENES
+        let imgX = imageStartX;
+        let imgY = startY;
+
+        if (item.imagenes && item.imagenes.length > 0) {
+
+          item.imagenes.forEach((img) => {
+
+            try {
+
+              const imgPath = path.join(
+                process.cwd(),
+                "uploads",
+                "votos",
+                img
+              );
+
+              if (!fs.existsSync(imgPath)) {
+                console.log("Imagen no encontrada:", imgPath);
+                return;
+              }
+
+              const ext = path.extname(imgPath).toLowerCase();
+
+              // ⚠️ SOLO formatos soportados por PDFKit
+              if (![".jpg", ".jpeg", ".png"].includes(ext)) {
+                console.log("Formato no soportado:", imgPath);
+                return;
+              }
+
+              doc.image(imgPath, imgX, imgY, {
+                fit: [imgWidth, imgHeight]
+              });
+
+              imgX += imgWidth + gap;
+
+              if (imgX + imgWidth > doc.page.width - 30) {
+                imgX = imageStartX;
+                imgY += imgHeight + gap;
+              }
+
+            } catch (err) {
+
+              console.log("Error cargando imagen:", img);
+
+            }
+
+          });
+
+        } else {
+
+          doc.fontSize(10)
+            .text("Sin evidencia", imageStartX, startY);
+
+        }
+
+        doc.y = Math.max(doc.y, imgY + imgHeight) + 20;
+
+        doc
+          .moveTo(30, doc.y)
+          .lineTo(doc.page.width - 30, doc.y)
+          .strokeColor("#cccccc")
+          .stroke();
+
+        doc.moveDown();
+
+      });
+
+      doc.end();
+
+    } catch (error) {
+
+      reject(error);
+
     }
 
   });

@@ -728,8 +728,8 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
       }
     });
 
-    const codigosLider = [...new Set(confirmaciones.map(c => c.codigoLider).filter(Boolean))];
-    const cedulas = [...new Set(confirmaciones.map(c => c.cedula).filter(Boolean))];
+    const codigosLider = [...new Set(confirmaciones.map(c => c.codigoLider))];
+    const cedulas = [...new Set(confirmaciones.map(c => c.cedula))];
 
     const leaders = await prisma.leaderExt.findMany({
       where: {
