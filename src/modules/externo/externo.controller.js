@@ -718,6 +718,7 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 };
 */
 
+
 export const exportPdfConfirmacionesExternas = async (req, res) => {
 
   try {
@@ -759,16 +760,13 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 
     });
 
-    const pdf = await generarPdfConfirmacionesExternas(data);
-
     res.setHeader("Content-Type", "application/pdf");
-
     res.setHeader(
       "Content-Disposition",
       "attachment; filename=confirmaciones_externas.pdf"
     );
 
-    res.end(pdf);
+    generarPdfConfirmacionesExternas(data, res);
 
   } catch (error) {
 
@@ -782,3 +780,4 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
   }
 
 };
+
