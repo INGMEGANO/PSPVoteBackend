@@ -956,6 +956,7 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 };
 */
 
+
 export const exportPdfConfirmacionesExternas = async (req, res) => {
 
   try {
@@ -981,7 +982,10 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
     while (moreData && procesados < maxRegistros) {
 
       const confirmaciones = await prisma.votacionConfirmacionExterna.findMany({
-        orderBy: { confirmadoEn: "desc" },
+        orderBy: [
+          { codigoLider: "asc" },
+          { cedula: "asc" }
+        ],
         skip: inicio + (page * pageSize),
         take: pageSize
       });
@@ -1022,29 +1026,6 @@ export const exportPdfConfirmacionesExternas = async (req, res) => {
 
       });
 
-      // ⭐ AQUI AGREGAS EL ORDENAMIENTO
-      data.sort((a, b) => {
-
-        const liderA = a.leader?.name || "";
-        const liderB = b.leader?.name || "";
-
-        if (liderA !== liderB) {
-          return liderA.localeCompare(liderB);
-        }
-
-        const votanteA = a.votante
-          ? `${a.votante.nombre1} ${a.votante.apellido1}`
-          : "";
-
-        const votanteB = b.votante
-          ? `${b.votante.nombre1} ${b.votante.apellido1}`
-          : "";
-
-        return votanteA.localeCompare(votanteB);
-
-      });
-
-      // ⭐ NO CAMBIA
       await doc.addBloque(data);
 
       procesados += data.length;

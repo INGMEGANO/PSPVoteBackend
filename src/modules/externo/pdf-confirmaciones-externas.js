@@ -428,7 +428,7 @@ export const generarPdfConfirmacionesExternas = (data, res) => {
 };
 */
 
-
+/*
 export const generarPdfConfirmacionesExternas = (res) => {
 
   const doc = new PDFDocument({
@@ -548,6 +548,184 @@ export const generarPdfConfirmacionesExternas = (res) => {
 
     addBloque: async (data) => {
       data.forEach(agregarRegistro);
+    },
+
+    finalizar: () => {
+      doc.end();
+    }
+
+  };
+
+};
+*/
+
+export const generarPdfConfirmacionesExternas = (res) => {
+
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: 30
+  });
+
+  doc.pipe(res);
+
+  doc
+    .fontSize(18)
+    .font("Helvetica-Bold")
+    .text("Confirmaciones Externas", { align: "center" });
+
+  doc.moveDown(2);
+
+  let liderActual = null;
+
+  const agregarRegistro = (item) => {
+
+    const votante = item.votante;
+    const lider = item.leader;
+
+    const nombreVotante = votante
+      ? `${votante.nombre1} ${votante.nombre2 || ""} ${votante.apellido1} ${votante.apellido2 || ""}`.trim()
+      : "N/A";
+
+    const nombreLider = lider?.name || "SIN LIDER";
+
+    // ⭐ SI CAMBIA EL LIDER, CREA ENCABEZADO
+    if (liderActual !== nombreLider) {
+
+      liderActual = nombreLider;
+
+      if (doc.y > doc.page.height - 100) {
+        doc.addPage();
+      }
+
+      doc.moveDown(1);
+
+      doc
+        .fontSize(14)
+        .font("Helvetica-Bold")
+        .fillColor("#000")
+        .text(`LIDER: ${nombreLider}`);
+
+      doc
+        .moveTo(30, doc.y + 3)
+        .lineTo(doc.page.width - 30, doc.y + 3)
+        .strokeColor("#000");
+
+      doc.moveDown(1);
+
+    }
+
+    if (doc.y > doc.page.height - 200) {
+      doc.addPage();
+    }
+
+    const startY = doc.y;
+
+    const infoX = 30;
+    const imageStartX = 300;
+
+    const imgWidth = 80;
+    const imgHeight = 80;
+    const gap = 10;
+
+    doc.fontSize(11).font("Helvetica-Bold")
+      .text("Votante:", infoX, startY, { continued: true })
+      .font("Helvetica")
+      .text(` ${nombreVotante}`);
+
+    doc.font("Helvetica-Bold")
+      .text("Cédula:", infoX, doc.y, { continued: true })
+      .font("Helvetica")
+      .text(` ${item.cedula}`);
+
+    const fechaColombia = new Date(item.confirmadoEn).toLocaleString("es-CO", {
+      timeZone: "America/Bogota"
+    });
+
+    doc.font("Helvetica-Bold")
+      .text("Fecha:", infoX, doc.y, { continued: true })
+      .font("Helvetica")
+      .text(` ${fechaColombia}`);
+
+    let imgX = imageStartX;
+    let imgY = startY;
+
+    // ⭐ NO TOCAMOS TU LOGICA DE IMAGENES
+    if (item.imagenes && item.imagenes.length > 0) {
+
+      item.imagenes.forEach((img) => {
+
+        try {
+
+          const imgPath = path.join(
+            process.cwd(),
+            "uploads",
+            "votos",
+            img
+          );
+
+          if (!fs.existsSync(imgPath)) return;
+
+          const ext = path.extname(imgPath).toLowerCase();
+
+          if (![".jpg", ".jpeg", ".png"].includes(ext)) return;
+
+          doc.image(imgPath, imgX, imgY, {
+            fit: [imgWidth, imgHeight]
+          });
+
+          imgX += imgWidth + gap;
+
+          if (imgX + imgWidth > doc.page.width - 30) {
+            imgX = imageStartX;
+            imgY += imgHeight + gap;
+          }
+
+        } catch (err) {}
+
+      });
+
+    }
+
+    doc.y = Math.max(doc.y, imgY + imgHeight) + 20;
+
+    doc
+      .moveTo(30, doc.y)
+      .lineTo(doc.page.width - 30, doc.y)
+      .strokeColor("#cccccc")
+      .stroke();
+
+    doc.moveDown();
+
+  };
+
+  return {
+
+    addBloque: async (data) => {
+
+      // ⭐ ORDENAMOS POR LIDER Y VOTANTE
+      data.sort((a, b) => {
+
+        const liderA = a.leader?.name || "";
+        const liderB = b.leader?.name || "";
+
+        if (liderA !== liderB) {
+          return liderA.localeCompare(liderB);
+        }
+
+        const votanteA = a.votante
+          ? `${a.votante.nombre1} ${a.votante.apellido1}`
+          : "";
+
+        const votanteB = b.votante
+          ? `${b.votante.nombre1} ${b.votante.apellido1}`
+          : "";
+
+        return votanteA.localeCompare(votanteB);
+
+      });
+
+      data.forEach(agregarRegistro);
+
     },
 
     finalizar: () => {
